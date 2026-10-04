@@ -51,8 +51,19 @@ class KharchaTrackApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'KharchaTrack',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF6F8F6),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
       ),
       home: const HomePage(),
     );
@@ -119,11 +130,13 @@ class _HomePageState extends State<HomePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => AddTransactionSheet(
         onSave: (item) async {
           setState(() {
             transactions.insert(0, item);
           });
+
           await saveTransactions();
         },
       ),
@@ -141,18 +154,27 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'KharchaTrack',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        title: const Row(
+          children: [
+            Icon(Icons.account_balance_wallet_rounded),
+            SizedBox(width: 10),
+            Text(
+              'KharchaTrack',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-        centerTitle: true,
       ),
       body: pages[selectedIndex],
       floatingActionButton: selectedIndex < 2
           ? FloatingActionButton.extended(
               onPressed: addTransaction,
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add Transaction'),
             )
           : null,
       bottomNavigationBar: NavigationBar(
@@ -165,21 +187,22 @@ class _HomePageState extends State<HomePage> {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
+            selectedIcon: Icon(Icons.home_rounded),
             label: 'Home',
           ),
           NavigationDestination(
-            icon: Icon(Icons.history),
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history_rounded),
             label: 'History',
           ),
           NavigationDestination(
             icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics),
+            selectedIcon: Icon(Icons.analytics_rounded),
             label: 'Analytics',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
+            selectedIcon: Icon(Icons.settings_rounded),
             label: 'Settings',
           ),
         ],
@@ -189,34 +212,61 @@ class _HomePageState extends State<HomePage> {
 
   Widget buildHome() {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                const Text('Total Balance'),
-                const SizedBox(height: 8),
-                Text(
-                  '₹${balance.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF168A4A),
+                Color(0xFF0F6B39),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Total Balance',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '₹${balance.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                balance >= 0
+                    ? 'You are managing your money well'
+                    : 'Your expenses are higher than income',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
               child: summaryCard(
                 'Income',
                 income,
-                Icons.arrow_downward,
+                Icons.arrow_downward_rounded,
                 Colors.green,
               ),
             ),
@@ -225,24 +275,63 @@ class _HomePageState extends State<HomePage> {
               child: summaryCard(
                 'Expense',
                 expense,
-                Icons.arrow_upward,
+                Icons.arrow_upward_rounded,
                 Colors.red,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
-        const Text(
-          'Recent Transactions',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Recent Transactions',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (transactions.length > 5)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    selectedIndex = 1;
+                  });
+                },
+                child: const Text('See all'),
+              ),
+          ],
         ),
         const SizedBox(height: 10),
         if (transactions.isEmpty)
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text('No transactions yet.\nTap Add to start.'),
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 52,
+                    color: Colors.grey.shade500,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No transactions yet',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap “Add Transaction” to record your first income or expense.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
               ),
             ),
           )
@@ -260,18 +349,32 @@ class _HomePageState extends State<HomePage> {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 6),
-            Text(title),
+            CircleAvatar(
+              radius: 19,
+              backgroundColor: color.withOpacity(0.12),
+              child: Icon(
+                icon,
+                color: color,
+                size: 21,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               '₹${amount.toStringAsFixed(0)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: 19,
                 color: color,
               ),
             ),
@@ -282,14 +385,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget transactionTile(TransactionItem item) {
+    final color = item.isIncome ? Colors.green : Colors.red;
+
     return Card(
+      margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 4,
+        ),
         leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.12),
           child: Icon(
-            item.isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+            item.isIncome
+                ? Icons.arrow_downward_rounded
+                : Icons.arrow_upward_rounded,
+            color: color,
           ),
         ),
-        title: Text(item.title),
+        title: Text(
+          item.title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         subtitle: Text(
           '${item.category} • ${item.date.day}/${item.date.month}/${item.date.year}',
         ),
@@ -297,14 +416,41 @@ class _HomePageState extends State<HomePage> {
           '${item.isIncome ? '+' : '-'}₹${item.amount.toStringAsFixed(0)}',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: item.isIncome ? Colors.green : Colors.red,
+            color: color,
+            fontSize: 15,
           ),
         ),
         onLongPress: () {
-          setState(() {
-            transactions.remove(item);
-          });
-          saveTransactions();
+          showDialog(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Delete transaction?'),
+                content: const Text(
+                  'This transaction will be removed permanently.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                    },
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        transactions.remove(item);
+                      });
+
+                      saveTransactions();
+                      Navigator.pop(dialogContext);
+                    },
+                    child: const Text('Delete'),
+                  ),
+                ],
+              );
+            },
+          );
         },
       ),
     );
@@ -312,18 +458,27 @@ class _HomePageState extends State<HomePage> {
 
   Widget buildHistory() {
     return transactions.isEmpty
-        ? const Center(child: Text('No transactions yet.'))
+        ? const Center(
+            child: Text('No transactions yet.'),
+          )
         : ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             children: [
               Text(
                 '${transactions.length} Transactions',
                 style: const TextStyle(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
+              Text(
+                'Long press a transaction to delete it.',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 16),
               ...transactions.map(transactionTile),
             ],
           );
@@ -331,32 +486,121 @@ class _HomePageState extends State<HomePage> {
 
   Widget buildAnalytics() {
     final total = income + expense;
+    final incomeRatio = total == 0 ? 0.0 : income / total;
+    final expenseRatio = total == 0 ? 0.0 : expense / total;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       children: [
         const Text(
-          'Monthly Analytics',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          'Analytics',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Your income and spending overview',
+          style: TextStyle(
+            color: Colors.grey.shade600,
+          ),
         ),
         const SizedBox(height: 20),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Income: ₹${income.toStringAsFixed(0)}'),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(
-                  value: total == 0 ? 0 : income / total,
-                  minHeight: 12,
+                const Text(
+                  'Money Overview',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                const SizedBox(height: 20),
-                Text('Expense: ₹${expense.toStringAsFixed(0)}'),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(
-                  value: total == 0 ? 0 : expense / total,
-                  minHeight: 12,
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Income'),
+                    Text(
+                      '₹${income.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: incomeRatio,
+                    minHeight: 12,
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Expense'),
+                    Text(
+                      '₹${expense.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: expenseRatio,
+                    minHeight: 12,
+                    color: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 25,
+                  child: Icon(Icons.account_balance_wallet_rounded),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Current Balance',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '₹${balance.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -368,31 +612,57 @@ class _HomePageState extends State<HomePage> {
 
   Widget buildSettings() {
     return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       children: [
-        const ListTile(
-          leading: Icon(Icons.currency_rupee),
-          title: Text('Currency'),
-          subtitle: Text('Indian Rupee (₹)'),
+        const Text(
+          'Settings',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        const ListTile(
-          leading: Icon(Icons.dark_mode_outlined),
-          title: Text('Dark Mode'),
-          subtitle: Text('Coming soon'),
+        const SizedBox(height: 6),
+        Text(
+          'Manage your KharchaTrack app',
+          style: TextStyle(
+            color: Colors.grey.shade600,
+          ),
         ),
-        const ListTile(
-          leading: Icon(Icons.file_download_outlined),
-          title: Text('Export Data'),
-          subtitle: Text('Coming soon'),
-        ),
-        const ListTile(
-          leading: Icon(Icons.privacy_tip_outlined),
-          title: Text('Privacy'),
-          subtitle: Text('Your data stays on your device'),
-        ),
-        const ListTile(
-          leading: Icon(Icons.info_outline),
-          title: Text('About'),
-          subtitle: Text('KharchaTrack v1.0.0'),
+        const SizedBox(height: 20),
+        Card(
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.currency_rupee_rounded),
+                title: Text('Currency'),
+                subtitle: Text('Indian Rupee (₹)'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.dark_mode_outlined),
+                title: Text('Dark Mode'),
+                subtitle: Text('Coming soon'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.file_download_outlined),
+                title: Text('Export Data'),
+                subtitle: Text('Coming soon'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.privacy_tip_outlined),
+                title: Text('Privacy'),
+                subtitle: Text('Your data stays on your device'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.info_outline_rounded),
+                title: Text('About'),
+                subtitle: Text('KharchaTrack v1.0.0'),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -432,106 +702,156 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(28),
+        ),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Add Transaction',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: false,
-                  label: Text('Expense'),
-                  icon: Icon(Icons.arrow_upward),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 12,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-                ButtonSegment(
-                  value: true,
-                  label: Text('Income'),
-                  icon: Icon(Icons.arrow_downward),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Add Transaction',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
-              selected: {isIncome},
-              onSelectionChanged: (value) {
-                setState(() {
-                  isIncome = value.first;
-                });
-              },
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixText: '₹ ',
-                border: OutlineInputBorder(),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'e.g. Lunch',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              initialValue: category,
-              decoration: const InputDecoration(
-                labelText: 'Category',
-                border: OutlineInputBorder(),
-              ),
-              items: categories
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
+              const SizedBox(height: 18),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    label: Text('Expense'),
+                    icon: Icon(Icons.arrow_upward_rounded),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('Income'),
+                    icon: Icon(Icons.arrow_downward_rounded),
+                  ),
+                ],
+                selected: {isIncome},
+                onSelectionChanged: (value) {
                   setState(() {
-                    category = value;
+                    isIncome = value.first;
                   });
-                }
-              },
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: save,
-              icon: const Icon(Icons.save),
-              label: const Text('Save Transaction'),
-            ),
-          ],
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Amount',
+                  hintText: '0',
+                  prefixText: '₹ ',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: titleController,
+                decoration: InputDecoration(
+                  labelText: 'Title',
+                  hintText: 'e.g. Lunch',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: category,
+                decoration: InputDecoration(
+                  labelText: 'Category',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                items: categories
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(item),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      category = value;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: save,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.save_rounded),
+                label: const Text(
+                  'Save Transaction',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void save() {
-    final amount = double.tryParse(amountController.text.trim());
+    final amount = double.tryParse(
+      amountController.text.trim(),
+    );
 
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount')),
+        const SnackBar(
+          content: Text('Enter a valid amount'),
+        ),
       );
       return;
     }
