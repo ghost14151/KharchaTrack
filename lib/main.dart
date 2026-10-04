@@ -400,7 +400,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 class AddTransactionSheet extends StatefulWidget {
-  final Function(TransactionItem) onSave;
+  final Future<void> Function(TransactionItem) onSave;
 
   const AddTransactionSheet({
     super.key,
