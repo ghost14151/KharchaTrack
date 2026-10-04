@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const KharchaTrackApp());
@@ -18,6 +20,26 @@ class TransactionItem {
     required this.isIncome,
     required this.date,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'category': category,
+      'amount': amount,
+      'isIncome': isIncome,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  factory TransactionItem.fromMap(Map<String, dynamic> map) {
+    return TransactionItem(
+      title: map['title'] as String,
+      category: map['category'] as String,
+      amount: (map['amount'] as num).toDouble(),
+      isIncome: map['isIncome'] as bool,
+      date: DateTime.parse(map['date'] as String),
+    );
+  }
 }
 
 class KharchaTrackApp extends StatelessWidget {
@@ -49,6 +71,40 @@ class _HomePageState extends State<HomePage> {
 
   final List<TransactionItem> transactions = [];
 
+  @override
+  void initState() {
+    super.initState();
+    loadTransactions();
+  }
+
+  Future<void> loadTransactions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('transactions');
+
+    if (saved == null) return;
+
+    final List<dynamic> data = jsonDecode(saved);
+
+    if (!mounted) return;
+
+    setState(() {
+      transactions.clear();
+      transactions.addAll(
+        data.map(
+          (item) => TransactionItem.fromMap(
+            Map<String, dynamic>.from(item),
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> saveTransactions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = transactions.map((item) => item.toMap()).toList();
+    await prefs.setString('transactions', jsonEncode(data));
+  }
+
   double get income => transactions
       .where((t) => t.isIncome)
       .fold(0, (sum, t) => sum + t.amount);
@@ -68,6 +124,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             transactions.insert(0, item);
           });
+          saveTransactions();
         },
       ),
     );
@@ -247,6 +304,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             transactions.remove(item);
           });
+          saveTransactions();
         },
       ),
     );
