@@ -1,8 +1,11 @@
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MobileAds.instance.initialize();
   runApp(const KharchaTrackApp());
 }
 
