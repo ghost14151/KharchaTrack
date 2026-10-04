@@ -120,11 +120,11 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       builder: (_) => AddTransactionSheet(
-        onSave: (item) {
+        onSave: (item) async {
           setState(() {
             transactions.insert(0, item);
           });
-          saveTransactions();
+          await saveTransactions();
         },
       ),
     );
