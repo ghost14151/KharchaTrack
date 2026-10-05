@@ -245,7 +245,7 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [
@@ -279,8 +279,9 @@ class _HomePageState extends State<HomePage> {
                 '₹${balance.toStringAsFixed(2)}',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 38,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
                 ),
               ),
               const SizedBox(height: 8),
@@ -325,8 +326,8 @@ class _HomePageState extends State<HomePage> {
             const Text(
               'Recent Transactions',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
               ),
             ),
             if (transactions.length > 5)
@@ -344,7 +345,10 @@ class _HomePageState extends State<HomePage> {
         if (transactions.isEmpty)
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(28),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 34,
+              ),
               child: Column(
                 children: [
                   Icon(
@@ -386,7 +390,7 @@ class _HomePageState extends State<HomePage> {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -428,8 +432,8 @@ class _HomePageState extends State<HomePage> {
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 4,
+          horizontal: 16,
+          vertical: 7,
         ),
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.12),
@@ -443,7 +447,8 @@ class _HomePageState extends State<HomePage> {
         title: Text(
           item.title,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
           ),
         ),
         subtitle: Text(
@@ -504,8 +509,8 @@ class _HomePageState extends State<HomePage> {
               Text(
                 '${transactions.length} Transactions',
                 style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 25,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 6),
@@ -532,8 +537,8 @@ class _HomePageState extends State<HomePage> {
         const Text(
           'Analytics',
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 6),
@@ -614,8 +619,12 @@ class _HomePageState extends State<HomePage> {
             child: Row(
               children: [
                 const CircleAvatar(
-                  radius: 25,
-                  child: Icon(Icons.account_balance_wallet_rounded),
+                  radius: 27,
+                  backgroundColor: Color(0xFFD9F2E3),
+                  child: Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: Color(0xFF168A4A),
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
