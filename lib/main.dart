@@ -7,8 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final prefs = await SharedPreferences.getInstance();
+  final savedDarkMode = prefs.getBool('dark_mode') ?? false;
+
+  appThemeMode.value =
+      savedDarkMode ? ThemeMode.dark : ThemeMode.light;
+
   runApp(const KharchaTrackApp());
 }
 
@@ -874,9 +881,14 @@ class _HomePageState extends State<HomePage> {
                 ),
                 trailing: Switch(
                   value: appThemeMode.value == ThemeMode.dark,
-                  onChanged: (value) {
+                  onChanged: (value) async {
                     appThemeMode.value =
                         value ? ThemeMode.dark : ThemeMode.light;
+
+                    final prefs =
+                        await SharedPreferences.getInstance();
+                    await prefs.setBool('dark_mode', value);
+
                     setState(() {});
                   },
                 ),
