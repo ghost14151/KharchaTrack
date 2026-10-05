@@ -1,11 +1,9 @@
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  MobileAds.instance.initialize();
   runApp(const KharchaTrackApp());
 }
 
@@ -55,16 +53,24 @@ class KharchaTrackApp extends StatelessWidget {
       title: 'KharchaTrack',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
+          seedColor: const Color(0xFF168A4A),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF6F8F6),
+        scaffoldBackgroundColor: const Color(0xFFF4F7F5),
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          backgroundColor: Color(0xFFF4F7F5),
+          surfaceTintColor: Colors.transparent,
+        ),
         cardTheme: CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
       ),
@@ -161,12 +167,22 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.transparent,
         title: const Row(
           children: [
-            Icon(Icons.account_balance_wallet_rounded),
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: Color(0xFF168A4A),
+              child: Icon(
+                Icons.account_balance_wallet_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
             SizedBox(width: 10),
             Text(
               'KharchaTrack',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
               ),
             ),
           ],
@@ -175,12 +191,23 @@ class _HomePageState extends State<HomePage> {
       body: pages[selectedIndex],
       floatingActionButton: selectedIndex < 2
           ? FloatingActionButton.extended(
+              elevation: 3,
+              backgroundColor: const Color(0xFF168A4A),
+              foregroundColor: Colors.white,
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Add Transaction'),
+              label: const Text(
+                'Add Transaction',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             )
           : null,
       bottomNavigationBar: NavigationBar(
+        height: 72,
+        elevation: 0,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: const Color(0xFFD9F2E3),
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
           setState(() {
@@ -215,7 +242,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget buildHome() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       children: [
         Container(
           padding: const EdgeInsets.all(24),
@@ -228,7 +255,14 @@ class _HomePageState extends State<HomePage> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(26),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22168A4A),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,7 +392,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             CircleAvatar(
               radius: 19,
-              backgroundColor: color.withOpacity(0.12),
+              backgroundColor: color.withValues(alpha: 0.12),
               child: Icon(
                 icon,
                 color: color,
@@ -398,7 +432,7 @@ class _HomePageState extends State<HomePage> {
           vertical: 4,
         ),
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.12),
+          backgroundColor: color.withValues(alpha: 0.12),
           child: Icon(
             item.isIncome
                 ? Icons.arrow_downward_rounded
