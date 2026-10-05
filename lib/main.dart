@@ -4,14 +4,11 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await MobileAds.instance.initialize();
 
   final prefs = await SharedPreferences.getInstance();
   final savedDarkMode = prefs.getBool('dark_mode') ?? false;
@@ -123,63 +120,6 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-
-class AdBanner extends StatefulWidget {
-  const AdBanner({super.key});
-
-  @override
-  State<AdBanner> createState() => _AdBannerState();
-}
-
-class _AdBannerState extends State<AdBanner> {
-  late final BannerAd _bannerAd;
-  bool _isLoaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (mounted) {
-            setState(() {
-              _isLoaded = true;
-            });
-          }
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-        },
-      ),
-    );
-
-    _bannerAd.load();
-  }
-
-  @override
-  void dispose() {
-    _bannerAd.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isLoaded) {
-      return const SizedBox.shrink();
-    }
-
-    return SizedBox(
-      width: _bannerAd.size.width.toDouble(),
-      height: _bannerAd.size.height.toDouble(),
-      child: AdWidget(ad: _bannerAd),
-    );
-  }
-}
-
 class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
@@ -282,12 +222,7 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(child: pages[selectedIndex]),
-          const AdBanner(),
-        ],
-      ),
+      body: pages[selectedIndex],
       floatingActionButton: selectedIndex < 2
           ? FloatingActionButton.extended(
               elevation: 3,
