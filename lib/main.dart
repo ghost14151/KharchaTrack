@@ -4,11 +4,14 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await MobileAds.instance.initialize();
 
   final prefs = await SharedPreferences.getInstance();
   final savedDarkMode = prefs.getBool('dark_mode') ?? false;
@@ -120,6 +123,63 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+
+class AdBanner extends StatefulWidget {
+  const AdBanner({super.key});
+
+  @override
+  State<AdBanner> createState() => _AdBannerState();
+}
+
+class _AdBannerState extends State<AdBanner> {
+  late final BannerAd _bannerAd;
+  bool _isLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) {
+            setState(() {
+              _isLoaded = true;
+            });
+          }
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+        },
+      ),
+    );
+
+    _bannerAd.load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isLoaded) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: _bannerAd.size.width.toDouble(),
+      height: _bannerAd.size.height.toDouble(),
+      child: AdWidget(ad: _bannerAd),
+    );
+  }
+}
+
 class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
@@ -222,7 +282,12 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      body: pages[selectedIndex],
+      body: Column(
+        children: [
+          Expanded(child: pages[selectedIndex]),
+          const AdBanner(),
+        ],
+      ),
       floatingActionButton: selectedIndex < 2
           ? FloatingActionButton.extended(
               elevation: 3,
@@ -810,37 +875,63 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> exportData() async {
     if (transactions.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No transactions to export')),
+        const SnackBar(
+          content: Text('No transactions to export yet.'),
+        ),
       );
       return;
     }
-
-    final buffer = StringBuffer();
-    buffer.writeln('Title,Category,Amount,Type,Date');
 
     String csv(String value) {
       return '"${value.replaceAll('"', '""')}"';
     }
 
+    final buffer = StringBuffer();
+    buffer.writeln('Date,Type,Title,Category,Amount');
+
     for (final item in transactions) {
+      final date =
+          '${item.date.year.toString().padLeft(4, '0')}-'
+          '${item.date.month.toString().padLeft(2, '0')}-'
+          '${item.date.day.toString().padLeft(2, '0')}';
+
       buffer.writeln(
+        '${csv(date)},'
+        '${csv(item.isIncome ? 'Income' : 'Expense')},'
         '${csv(item.title)},'
         '${csv(item.category)},'
-        '${item.amount.toStringAsFixed(2)},'
-        '${item.isIncome ? 'Income' : 'Expense'},'
-        '${item.date.day}/${item.date.month}/${item.date.year}',
+        '${item.amount.toStringAsFixed(2)}',
       );
     }
 
+    final now = DateTime.now();
+    final timestamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}';
+
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/KharchaTrack_Transactions.csv');
-    await file.writeAsString(buffer.toString());
+    final file = File(
+      '${dir.path}/KharchaTrack_Transactions_$timestamp.csv',
+    );
+
+    final csvContent = '\uFEFF${buffer.toString()}';
+    await file.writeAsString(csvContent, encoding: utf8);
 
     await SharePlus.instance.share(
       ShareParams(
         text: 'KharchaTrack transaction export',
         files: [XFile(file.path)],
+      ),
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Export ready — choose an app to save or share it.'),
       ),
     );
   }
