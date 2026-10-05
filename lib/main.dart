@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +53,10 @@ class KharchaTrackApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: appThemeMode,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'KharchaTrack',
       theme: ThemeData(
@@ -74,7 +82,26 @@ class KharchaTrackApp extends StatelessWidget {
           ),
         ),
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF168A4A),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFF101512),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          color: const Color(0xFF18201B),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      ),
+      themeMode: themeMode,
       home: const HomePage(),
+    );
+      },
     );
   }
 }
@@ -267,12 +294,34 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Total Balance',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 15,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'TOTAL BALANCE',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: Colors.white,
+                      size: 17,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
@@ -283,6 +332,29 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w800,
                   letterSpacing: -1,
                 ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text(
+                    '₹',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    balance.toStringAsFixed(2),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1.2,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
@@ -296,6 +368,28 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: quickActionCard(
+                'Income',
+                Icons.add_circle_rounded,
+                const Color(0xFF168A4A),
+                true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: quickActionCard(
+                'Expense',
+                Icons.remove_circle_rounded,
+                const Color(0xFFD64545),
+                false,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Row(
@@ -379,6 +473,57 @@ class _HomePageState extends State<HomePage> {
         else
           ...transactions.take(5).map(transactionTile),
       ],
+    );
+  }
+
+  Widget quickActionCard(
+    String title,
+    IconData icon,
+    Color color,
+    bool incomeAction,
+  ) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AddTransactionSheet(
+            onSave: (item) async {
+              setState(() {
+                transactions.insert(0, item);
+              });
+              await saveTransactions();
+            },
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Add $title',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -656,6 +801,43 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> exportData() async {
+    if (transactions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No transactions to export')),
+      );
+      return;
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('Title,Category,Amount,Type,Date');
+
+    String csv(String value) {
+      return '"${value.replaceAll('"', '""')}"';
+    }
+
+    for (final item in transactions) {
+      buffer.writeln(
+        '${csv(item.title)},'
+        '${csv(item.category)},'
+        '${item.amount.toStringAsFixed(2)},'
+        '${item.isIncome ? 'Income' : 'Expense'},'
+        '${item.date.day}/${item.date.month}/${item.date.year}',
+      );
+    }
+
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/KharchaTrack_Transactions.csv');
+    await file.writeAsString(buffer.toString());
+
+    await SharePlus.instance.share(
+      ShareParams(
+        text: 'KharchaTrack transaction export',
+        files: [XFile(file.path)],
+      ),
+    );
+  }
+
   Widget buildSettings() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -663,16 +845,14 @@ class _HomePageState extends State<HomePage> {
         const Text(
           'Settings',
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Manage your KharchaTrack app',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-          ),
+          'Personalize your KharchaTrack experience',
+          style: TextStyle(color: Colors.grey.shade600),
         ),
         const SizedBox(height: 20),
         Card(
@@ -684,22 +864,36 @@ class _HomePageState extends State<HomePage> {
                 subtitle: Text('Indian Rupee (₹)'),
               ),
               const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.dark_mode_outlined),
-                title: Text('Dark Mode'),
-                subtitle: Text('Coming soon'),
+              ListTile(
+                leading: const Icon(Icons.dark_mode_outlined),
+                title: const Text('Dark Mode'),
+                subtitle: Text(
+                  appThemeMode.value == ThemeMode.dark
+                      ? 'Dark theme enabled'
+                      : 'Use dark theme',
+                ),
+                trailing: Switch(
+                  value: appThemeMode.value == ThemeMode.dark,
+                  onChanged: (value) {
+                    appThemeMode.value =
+                        value ? ThemeMode.dark : ThemeMode.light;
+                    setState(() {});
+                  },
+                ),
               ),
               const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.file_download_outlined),
-                title: Text('Export Data'),
-                subtitle: Text('Coming soon'),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined),
+                title: const Text('Export Data'),
+                subtitle: const Text('Share transactions as CSV'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: exportData,
               ),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
                 title: Text('Privacy'),
-                subtitle: Text('Your data stays on your device'),
+                subtitle: Text('Your transaction data stays on your device'),
               ),
               const Divider(height: 1),
               const ListTile(
@@ -713,6 +907,7 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
+
 }
 
 class AddTransactionSheet extends StatefulWidget {
