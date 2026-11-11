@@ -19,7 +19,7 @@ If you choose Export CSV, Create Backup or Restore Backup, the app creates or re
 
 ## Advertising
 
-This version integrates Google Mobile Ads using Google's **sample test app ID and test banner ad unit ID**. Test ads do not generate earnings for the app developer.
+This version integrates Google Mobile Ads using Google's **sample test app ID, test banner ad unit ID and test interstitial ad unit ID**. A full-screen test interstitial may be attempted at most once every 6 hours when the app opens. It can be closed using the ad's provided close control, and the app remains usable if the ad is unavailable or fails to load. Test ads do not generate earnings for the app developer.
 
 If production advertising is enabled in a future version, Google Mobile Ads may process information such as device identifiers, IP address, diagnostics and ad interactions to provide, measure and protect advertising services. Google's handling of data is described in the [Google Privacy Policy](https://policies.google.com/privacy) and [Google advertising information](https://policies.google.com/technologies/ads).
 
