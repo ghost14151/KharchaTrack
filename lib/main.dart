@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -89,12 +88,6 @@ Future<void> main() async {
 }
 
 Future<void> _initializeAppServices() async {
-  try {
-    await MobileAds.instance.initialize();
-  } catch (error) {
-    debugPrint('AdMob initialization failed; continuing without ads: $error');
-  }
-
   try {
     final prefs = await SharedPreferences.getInstance();
     final savedDarkMode = prefs.getBool('dark_mode') ?? false;
@@ -309,54 +302,6 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     loadTransactions();
-    _maybeShowInterstitialAd();
-  }
-
-  Future<void> _maybeShowInterstitialAd() async {
-    // Show at most one full-screen ad every 6 hours. Ads never block app use.
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final lastShown = prefs.getInt('last_interstitial_ad_at') ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    const sixHoursMs = 6 * 60 * 60 * 1000;
-    if (now - lastShown < sixHoursMs) return;
-
-    InterstitialAd.load(
-      adUnitId: 'ca-app-pub-3940256099942544/1033173712',
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          if (!mounted) {
-            ad.dispose();
-            return;
-          }
-          ad.fullScreenContentCallback = FullScreenContentCallback(
-            onAdShowedFullScreenContent: (_) {
-              SharedPreferences.getInstance().then((store) {
-                store.setInt(
-                  'last_interstitial_ad_at',
-                  DateTime.now().millisecondsSinceEpoch,
-                );
-              });
-            },
-            onAdDismissedFullScreenContent: (shownAd) {
-              shownAd.dispose();
-            },
-            onAdFailedToShowFullScreenContent: (shownAd, error) {
-              debugPrint('KharchaTrack test interstitial failed to show: $error');
-              shownAd.dispose();
-            },
-          );
-          ad.show();
-        },
-        onAdFailedToLoad: (error) {
-          debugPrint('KharchaTrack test interstitial failed to load: $error');
-          // Continue normally when an ad is unavailable or offline.
-        },
-      ),
-    );
   }
 
   Future<void> loadTransactions() async {
@@ -585,7 +530,6 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KharchaTrackBannerAd(),
           NavigationBar(
         height: 72,
         elevation: 0,
@@ -1441,19 +1385,13 @@ class _HomePageState extends State<HomePage> {
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
                 title: Text('Privacy Policy'),
-                subtitle: Text('Offline data storage, backups and advertising details are in PRIVACY_POLICY.md'),
-              ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.ads_click_rounded),
-                title: Text('Advertisements'),
-                subtitle: Text('Google test banner ads only — no ad revenue is generated'),
+                subtitle: Text('Your transactions and settings stay on this device; see the privacy policy.'),
               ),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.4.0'),
+                subtitle: Text('KharchaTrack v1.5.0'),
               ),
             ],
           ),
@@ -1692,65 +1630,3 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   }
 }
 
-
-class KharchaTrackBannerAd extends StatefulWidget {
-  const KharchaTrackBannerAd({super.key});
-
-  @override
-  State<KharchaTrackBannerAd> createState() => _KharchaTrackBannerAdState();
-}
-
-class _KharchaTrackBannerAdState extends State<KharchaTrackBannerAd> {
-  BannerAd? _bannerAd;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBannerAd();
-  }
-
-  void _loadBannerAd() {
-    final ad = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) {
-            ad.dispose();
-            return;
-          }
-          setState(() => _bannerAd = ad as BannerAd);
-        },
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('KharchaTrack test banner failed to load: $error');
-          ad.dispose();
-        },
-      ),
-    );
-    ad.load();
-  }
-
-  @override
-  void dispose() {
-    _bannerAd?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 50,
-      width: double.infinity,
-      child: Center(
-        child: _bannerAd == null
-            ? const SizedBox.shrink()
-            : SizedBox(
-                width: 320,
-                height: 50,
-                child: AdWidget(ad: _bannerAd!),
-              ),
-      ),
-    );
-  }
-}
