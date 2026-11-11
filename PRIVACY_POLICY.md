@@ -17,17 +17,9 @@ KharchaTrack does not currently provide user accounts, cloud sync or a developer
 
 If you choose Export CSV, Create Backup or Restore Backup, the app creates or reads a file at your direction. You decide where exported files are saved or shared. Backup files can contain sensitive financial information, so keep them private and secure.
 
-## Advertising
+## Advertising and data sharing
 
-This version integrates Google Mobile Ads using Google's **sample test app ID, test banner ad unit ID and test interstitial ad unit ID**. A full-screen test interstitial may be attempted at most once every 6 hours when the app opens. It can be closed using the ad's provided close control, and the app remains usable if the ad is unavailable or fails to load. Test ads do not generate earnings for the app developer.
-
-If production advertising is enabled in a future version, Google Mobile Ads may process information such as device identifiers, IP address, diagnostics and ad interactions to provide, measure and protect advertising services. Google's handling of data is described in the [Google Privacy Policy](https://policies.google.com/privacy) and [Google advertising information](https://policies.google.com/technologies/ads).
-
-Production ads must not be enabled until the app owner has completed the applicable AdMob setup, consent and age-appropriate configuration, and replaced all sample test IDs with approved app-specific IDs.
-
-## Data sharing
-
-KharchaTrack does not sell transaction records. Transaction data is not sent to a KharchaTrack server. Information may be processed by Google Mobile Ads as described above when the advertising SDK is used.
+KharchaTrack does not display advertisements and does not include an advertising SDK. The app does not send transaction records to a KharchaTrack server.
 
 ## Your choices
 
