@@ -964,7 +964,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(28),
