@@ -290,6 +290,54 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     loadTransactions();
+    _maybeShowInterstitialAd();
+  }
+
+  Future<void> _maybeShowInterstitialAd() async {
+    // Show at most one full-screen ad every 6 hours. Ads never block app use.
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastShown = prefs.getInt('last_interstitial_ad_at') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    const sixHoursMs = 6 * 60 * 60 * 1000;
+    if (now - lastShown < sixHoursMs) return;
+
+    InterstitialAd.load(
+      adUnitId: 'ca-app-pub-3940256099942544/1033173712',
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          ad.fullScreenContentCallback = FullScreenContentCallback(
+            onAdShowedFullScreenContent: (_) {
+              SharedPreferences.getInstance().then((store) {
+                store.setInt(
+                  'last_interstitial_ad_at',
+                  DateTime.now().millisecondsSinceEpoch,
+                );
+              });
+            },
+            onAdDismissedFullScreenContent: (shownAd) {
+              shownAd.dispose();
+            },
+            onAdFailedToShowFullScreenContent: (shownAd, error) {
+              debugPrint('KharchaTrack test interstitial failed to show: $error');
+              shownAd.dispose();
+            },
+          );
+          ad.show();
+        },
+        onAdFailedToLoad: (error) {
+          debugPrint('KharchaTrack test interstitial failed to load: $error');
+          // Continue normally when an ad is unavailable or offline.
+        },
+      ),
+    );
   }
 
   Future<void> loadTransactions() async {
