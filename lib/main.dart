@@ -125,6 +125,7 @@ class _HomePageState extends State<HomePage> {
 
   final List<TransactionItem> transactions = [];
   String historySearchQuery = '';
+  final TextEditingController historySearchController = TextEditingController();
   double monthlyBudget = 0;
 
   @override
@@ -298,6 +299,12 @@ class _HomePageState extends State<HomePage> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    historySearchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -766,6 +773,7 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 12),
         TextField(
+          controller: historySearchController,
           onChanged: (value) => setState(() => historySearchQuery = value),
           decoration: InputDecoration(
             hintText: 'Search title or category',
@@ -774,7 +782,10 @@ class _HomePageState extends State<HomePage> {
                 ? null
                 : IconButton(
                     icon: const Icon(Icons.clear_rounded),
-                    onPressed: () => setState(() => historySearchQuery = ''),
+                    onPressed: () {
+                      historySearchController.clear();
+                      setState(() => historySearchQuery = '');
+                    },
                   ),
             filled: true,
             border: OutlineInputBorder(
@@ -1075,7 +1086,7 @@ class _HomePageState extends State<HomePage> {
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.0.0'),
+                subtitle: Text('KharchaTrack v1.1.0'),
               ),
             ],
           ),
@@ -1299,7 +1310,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         category: category,
         amount: amount,
         isIncome: isIncome,
-        date: DateTime.now(),
+        date: widget.initialItem?.date ?? DateTime.now(),
       ),
     );
 
