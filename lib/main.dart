@@ -82,32 +82,47 @@ const FlutterSecureStorage secureStorage = FlutterSecureStorage();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Render the app before initializing optional platform plugins.
+  runApp(const KharchaTrackApp());
+  _initializeAppServices();
+}
+
+Future<void> _initializeAppServices() async {
   try {
     await MobileAds.instance.initialize();
   } catch (error) {
     debugPrint('AdMob initialization failed; continuing without ads: $error');
   }
 
-  final prefs = await SharedPreferences.getInstance();
-  final savedDarkMode = prefs.getBool('dark_mode') ?? false;
-  appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
-  dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
-  dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
-  dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDarkMode = prefs.getBool('dark_mode') ?? false;
+    appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
+    dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
+    dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
+    dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
+    appThemeMode.value = savedDarkMode ? ThemeMode.dark : ThemeMode.light;
+    appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+  } catch (error) {
+    debugPrint('Settings initialization failed; using defaults: $error');
+  }
 
-  appThemeMode.value =
-      savedDarkMode ? ThemeMode.dark : ThemeMode.light;
-  appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
-  appUnlocked.value = !appLockEnabled.value;
-  appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+  try {
+    appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
+    appUnlocked.value = !appLockEnabled.value;
+  } catch (error) {
+    appLockEnabled.value = false;
+    appUnlocked.value = true;
+    debugPrint('App lock initialization failed; continuing unlocked: $error');
+  }
+
   try {
     await initializeDailyReminderPlugin();
     if (dailyReminderEnabled.value) await scheduleDailyReminder();
-  } catch (_) {
-    // Keep the app usable if notification setup is unavailable.
+  } catch (error) {
+    debugPrint('Reminder initialization failed; continuing without reminders: $error');
   }
-
-  runApp(const KharchaTrackApp());
 }
 
 class TransactionItem {
