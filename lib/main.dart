@@ -340,29 +340,6 @@ class _HomePageState extends State<HomePage> {
                   letterSpacing: -1,
                 ),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Text(
-                    '₹',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    balance.toStringAsFixed(2),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1.2,
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 8),
               Text(
                 balance >= 0
@@ -497,6 +474,7 @@ class _HomePageState extends State<HomePage> {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (_) => AddTransactionSheet(
+            initialIsIncome: incomeAction,
             onSave: (item) async {
               setState(() {
                 transactions.insert(0, item);
@@ -631,13 +609,15 @@ class _HomePageState extends State<HomePage> {
                     child: const Text('Cancel'),
                   ),
                   FilledButton(
-                    onPressed: () {
+                    onPressed: () async {
                       setState(() {
                         transactions.remove(item);
                       });
 
-                      saveTransactions();
-                      Navigator.pop(dialogContext);
+                      await saveTransactions();
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
                     },
                     child: const Text('Delete'),
                   ),
@@ -950,10 +930,12 @@ class _HomePageState extends State<HomePage> {
 
 class AddTransactionSheet extends StatefulWidget {
   final Future<void> Function(TransactionItem) onSave;
+  final bool initialIsIncome;
 
   const AddTransactionSheet({
     super.key,
     required this.onSave,
+    this.initialIsIncome = false,
   });
 
   @override
@@ -964,7 +946,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   final amountController = TextEditingController();
   final titleController = TextEditingController();
 
-  bool isIncome = false;
+  late bool isIncome = widget.initialIsIncome;
 
   final categories = [
     'Food',
@@ -983,7 +965,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(28),
         ),
@@ -1050,7 +1032,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   hintText: '0',
                   prefixText: '₹ ',
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -1063,7 +1045,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   labelText: 'Title',
                   hintText: 'e.g. Lunch',
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -1075,7 +1057,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 decoration: InputDecoration(
                   labelText: 'Category',
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
