@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -81,6 +82,7 @@ const FlutterSecureStorage secureStorage = FlutterSecureStorage();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
 
   final prefs = await SharedPreferences.getInstance();
   final savedDarkMode = prefs.getBool('dark_mode') ?? false;
@@ -513,7 +515,11 @@ class _HomePageState extends State<HomePage> {
               ),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const KharchaTrackBannerAd(),
+          NavigationBar(
         height: 72,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -545,6 +551,8 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings_rounded),
             label: 'Settings',
+          ),
+        ],
           ),
         ],
       ),
@@ -1365,14 +1373,20 @@ class _HomePageState extends State<HomePage> {
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
-                title: Text('Privacy'),
-                subtitle: Text('Your transaction data stays on your device'),
+                title: Text('Privacy Policy'),
+                subtitle: Text('Offline data storage, backups and advertising details are in PRIVACY_POLICY.md'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.ads_click_rounded),
+                title: Text('Advertisements'),
+                subtitle: Text('Google test banner ads only — no ad revenue is generated'),
               ),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.3.0'),
+                subtitle: Text('KharchaTrack v1.4.0'),
               ),
             ],
           ),
@@ -1608,5 +1622,68 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     amountController.dispose();
     titleController.dispose();
     super.dispose();
+  }
+}
+
+
+class KharchaTrackBannerAd extends StatefulWidget {
+  const KharchaTrackBannerAd({super.key});
+
+  @override
+  State<KharchaTrackBannerAd> createState() => _KharchaTrackBannerAdState();
+}
+
+class _KharchaTrackBannerAdState extends State<KharchaTrackBannerAd> {
+  BannerAd? _bannerAd;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    final ad = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() => _bannerAd = ad as BannerAd);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('KharchaTrack test banner failed to load: $error');
+          ad.dispose();
+        },
+      ),
+    );
+    ad.load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: Center(
+        child: _bannerAd == null
+            ? const SizedBox.shrink()
+            : SizedBox(
+                width: 320,
+                height: 50,
+                child: AdWidget(ad: _bannerAd!),
+              ),
+      ),
+    );
   }
 }
