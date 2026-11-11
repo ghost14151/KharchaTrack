@@ -1102,9 +1102,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> restoreBackup() async {
     try {
-      final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
-      if (picked == null || picked.files.single.path == null) return;
-      final decoded = jsonDecode(await File(picked.files.single.path!).readAsString());
+      final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['json']);
+      if (picked == null || picked.path == null) return;
+      final decoded = jsonDecode(await File(picked.path!).readAsString());
       if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) throw const FormatException('Unsupported KharchaTrack backup file.');
       final restored = (decoded['transactions'] as List).map((entry) { if (entry is! Map) throw const FormatException('Invalid transaction in backup.'); return TransactionItem.fromMap(Map<String, dynamic>.from(entry)); }).toList();
       final budget = (decoded['monthlyBudget'] as num?)?.toDouble() ?? 0;
@@ -1413,7 +1413,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   ),
                 ),
                 icon: const Icon(Icons.save_rounded),
-                label: const Text(
+                label: Text(
                   widget.initialItem == null ? 'Save Transaction' : 'Update Transaction',
                   style: TextStyle(
                     fontSize: 16,
