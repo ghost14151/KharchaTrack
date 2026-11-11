@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 final ValueNotifier<bool> appLockEnabled = ValueNotifier(false);
+final ValueNotifier<bool> appUnlocked = ValueNotifier(true);
 final ValueNotifier<bool> appBiometricEnabled = ValueNotifier(false);
 const FlutterSecureStorage secureStorage = FlutterSecureStorage();
 
@@ -22,6 +23,7 @@ Future<void> main() async {
   appThemeMode.value =
       savedDarkMode ? ThemeMode.dark : ThemeMode.light;
   appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
+  appUnlocked.value = !appLockEnabled.value;
   appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
 
   runApp(const KharchaTrackApp());
@@ -121,25 +123,23 @@ class KharchaTrackApp extends StatelessWidget {
   }
 }
 
-
 class AppLockGate extends StatelessWidget {
   const AppLockGate({super.key});
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: appLockEnabled,
-      builder: (context, enabled, _) {
-        if (!enabled) return const HomePage();
-        return const AppLockScreen();
-      },
+      builder: (context, enabled, _) => ValueListenableBuilder<bool>(
+        valueListenable: appUnlocked,
+        builder: (context, unlocked, _) =>
+            (!enabled || unlocked) ? const HomePage() : const AppLockScreen(),
+      ),
     );
   }
 }
 
 class AppLockScreen extends StatefulWidget {
   const AppLockScreen({super.key});
-
   @override
   State<AppLockScreen> createState() => _AppLockScreenState();
 }
@@ -147,18 +147,16 @@ class AppLockScreen extends StatefulWidget {
 class _AppLockScreenState extends State<AppLockScreen> {
   final pinController = TextEditingController();
   final auth = LocalAuthentication();
-  bool checkingBiometric = false;
   String? errorText;
-
+  bool busy = false;
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => tryBiometric());
+    WidgetsBinding.instance.addPostFrameCallback((_) => unlockBiometric());
   }
-
-  Future<void> tryBiometric() async {
-    if (!appBiometricEnabled.value || checkingBiometric) return;
-    setState(() => checkingBiometric = true);
+  Future<void> unlockBiometric() async {
+    if (!appBiometricEnabled.value || busy) return;
+    setState(() => busy = true);
     try {
       final available = await auth.getAvailableBiometrics();
       if (available.isNotEmpty) {
@@ -166,38 +164,27 @@ class _AppLockScreenState extends State<AppLockScreen> {
           localizedReason: 'Unlock KharchaTrack',
           biometricOnly: true,
         );
-        if (ok && mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomePage()),
-          );
-          return;
-        }
+        if (ok) appUnlocked.value = true;
       }
     } catch (_) {
-      // PIN remains available if biometric authentication is unavailable.
+      // The PIN remains available if biometrics cannot be used.
     }
-    if (mounted) setState(() => checkingBiometric = false);
+    if (mounted) setState(() => busy = false);
   }
-
-  Future<void> unlockWithPin() async {
+  Future<void> unlockPin() async {
     final savedPin = await secureStorage.read(key: 'app_pin');
-    if (pinController.text == savedPin && savedPin != null) {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+    if (savedPin != null && pinController.text == savedPin) {
+      appUnlocked.value = true;
     } else {
       setState(() => errorText = 'Incorrect PIN. Try again.');
       pinController.clear();
     }
   }
-
   @override
   void dispose() {
     pinController.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,39 +198,21 @@ class _AppLockScreenState extends State<AppLockScreen> {
               children: [
                 const Icon(Icons.lock_rounded, size: 58),
                 const SizedBox(height: 16),
-                const Text('KharchaTrack is locked',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Text('KharchaTrack is locked', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text('Enter your app PIN to continue.'),
+                const Text('Enter your 4–6 digit app PIN.'),
                 const SizedBox(height: 20),
                 TextField(
                   controller: pinController,
                   keyboardType: TextInputType.number,
                   obscureText: true,
                   maxLength: 6,
-                  decoration: InputDecoration(
-                    labelText: '4–6 digit PIN',
-                    errorText: errorText,
-                    border: const OutlineInputBorder(),
-                  ),
-                  onSubmitted: (_) => unlockWithPin(),
+                  decoration: InputDecoration(labelText: 'App PIN', errorText: errorText, border: const OutlineInputBorder()),
+                  onSubmitted: (_) => unlockPin(),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: unlockWithPin,
-                    child: const Text('Unlock'),
-                  ),
-                ),
-                if (appBiometricEnabled.value) ...[
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: checkingBiometric ? null : tryBiometric,
-                    icon: const Icon(Icons.fingerprint),
-                    label: const Text('Unlock with fingerprint / face'),
-                  ),
-                ],
+                SizedBox(width: double.infinity, child: FilledButton(onPressed: unlockPin, child: const Text('Unlock'))),
+                if (appBiometricEnabled.value)
+                  TextButton.icon(onPressed: busy ? null : unlockBiometric, icon: const Icon(Icons.fingerprint), label: const Text('Use fingerprint / face')),
               ],
             ),
           ),
@@ -252,7 +221,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
     );
   }
 }
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -492,7 +460,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
               label: Text(
-                widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
+                'Add Transaction',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             )
@@ -1148,10 +1116,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   Future<void> exportBackup() async {
     final prefs = await SharedPreferences.getInstance();
-    final backup = {
+    final backup = <String, dynamic>{
       'format': 'KharchaTrackBackup',
       'version': 1,
       'createdAt': DateTime.now().toIso8601String(),
@@ -1160,84 +1127,55 @@ class _HomePageState extends State<HomePage> {
       'transactions': transactions.map((item) => item.toMap()).toList(),
     };
     final now = DateTime.now();
-    final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final stamp = now.year.toString() + now.month.toString().padLeft(2, '0') + now.day.toString().padLeft(2, '0');
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/KharchaTrack_Backup_$stamp.json');
+    final file = File(dir.path + '/KharchaTrack_Backup_' + stamp + '.json');
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
-    await SharePlus.instance.share(
-      ShareParams(
-        text: 'KharchaTrack backup. Keep this file private because it contains your financial records.',
-        files: [XFile(file.path)],
-      ),
-    );
+    await SharePlus.instance.share(ShareParams(
+      text: 'KharchaTrack backup. Keep this file private because it contains financial records.',
+      files: [XFile(file.path)],
+    ));
   }
 
   Future<void> restoreBackup() async {
     try {
-      final picked = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
+      final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
       if (picked == null || picked.files.single.path == null) return;
-      final content = await File(picked.files.single.path!).readAsString();
-      final decoded = jsonDecode(content);
-      if (decoded is! Map<String, dynamic> ||
-          decoded['format'] != 'KharchaTrackBackup' ||
-          decoded['version'] != 1 ||
-          decoded['transactions'] is! List) {
-        throw const FormatException('This is not a supported KharchaTrack backup.');
+      final decoded = jsonDecode(await File(picked.files.single.path!).readAsString());
+      if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) {
+        throw const FormatException('Unsupported KharchaTrack backup file.');
       }
       final restored = (decoded['transactions'] as List).map((entry) {
-        if (entry is! Map) throw const FormatException('Invalid transaction entry.');
+        if (entry is! Map) throw const FormatException('Invalid transaction in backup.');
         return TransactionItem.fromMap(Map<String, dynamic>.from(entry));
       }).toList();
       final budget = (decoded['monthlyBudget'] as num?)?.toDouble() ?? 0;
       if (budget < 0) throw const FormatException('Invalid monthly budget.');
-
       if (!mounted) return;
-      final confirm = await showDialog<bool>(
+      final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Restore backup?'),
-          content: Text('This will replace your current ${transactions.length} transactions with ${restored.length} backup transactions.'),
+          content: Text('This replaces ' + transactions.length.toString() + ' current transactions with ' + restored.length.toString() + ' backup transactions.'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Restore'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore')),
           ],
         ),
       );
-      if (confirm != true) return;
-
+      if (confirmed != true) return;
       final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        transactions
-          ..clear()
-          ..addAll(restored);
-        monthlyBudget = budget;
-      });
+      setState(() { transactions..clear()..addAll(restored); monthlyBudget = budget; });
       await saveTransactions();
       await prefs.setDouble('monthly_budget', budget);
       if (decoded['darkMode'] is bool) {
-        await prefs.setBool('dark_mode', decoded['darkMode'] as bool);
-        appThemeMode.value = (decoded['darkMode'] as bool)
-            ? ThemeMode.dark
-            : ThemeMode.light;
+        final dark = decoded['darkMode'] as bool;
+        await prefs.setBool('dark_mode', dark);
+        appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light;
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backup restored successfully.')),
-      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup restored successfully.')));
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Restore failed: $error')),
-      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: ' + error.toString())));
     }
   }
 
@@ -1249,41 +1187,17 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(isEnabled ? 'Change App PIN' : 'Set App PIN'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: pinController,
-              keyboardType: TextInputType.number,
-              obscureText: true,
-              maxLength: 6,
-              decoration: const InputDecoration(labelText: 'New 4–6 digit PIN'),
-            ),
-            TextField(
-              controller: confirmController,
-              keyboardType: TextInputType.number,
-              obscureText: true,
-              maxLength: 6,
-              decoration: const InputDecoration(labelText: 'Confirm PIN'),
-            ),
-          ],
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'New 4–6 digit PIN')),
+          TextField(controller: confirmController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'Confirm PIN')),
+        ]),
         actions: [
-          if (isEnabled)
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, 'disable'),
-              child: const Text('Disable Lock'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
+          if (isEnabled) TextButton(onPressed: () => Navigator.pop(dialogContext, 'disable'), child: const Text('Disable Lock')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
               final pin = pinController.text;
-              if (pin.length >= 4 &&
-                  pin.length <= 6 &&
-                  RegExp(r'^\\d{4,6}
+              if (RegExp(r'^[0-9]{4,6}
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       children: [
@@ -1344,47 +1258,15 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined),
-                title: const Text('Export CSV'),
-                subtitle: const Text('Share transactions as a spreadsheet'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: exportData,
-              ),
+              ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('Export CSV'), subtitle: const Text('Share transactions as a spreadsheet'), trailing: const Icon(Icons.chevron_right_rounded), onTap: exportData),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.backup_outlined),
-                title: const Text('Create Backup'),
-                subtitle: const Text('Save transactions and settings as JSON'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: exportBackup,
-              ),
+              ListTile(leading: const Icon(Icons.backup_outlined), title: const Text('Create Backup'), subtitle: const Text('Save transactions and settings as JSON'), trailing: const Icon(Icons.chevron_right_rounded), onTap: exportBackup),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.restore_rounded),
-                title: const Text('Restore Backup'),
-                subtitle: const Text('Replace current data from a backup file'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: restoreBackup,
-              ),
+              ListTile(leading: const Icon(Icons.restore_rounded), title: const Text('Restore Backup'), subtitle: const Text('Replace current data from a backup file'), trailing: const Icon(Icons.chevron_right_rounded), onTap: restoreBackup),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.lock_outline_rounded),
-                title: const Text('App PIN Lock'),
-                subtitle: Text(appLockEnabled.value ? 'PIN lock enabled' : 'Protect the app with a PIN'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: configureAppPin,
-              ),
+              ListTile(leading: const Icon(Icons.lock_outline_rounded), title: const Text('App PIN Lock'), subtitle: Text(appLockEnabled.value ? 'PIN lock enabled' : 'Protect the app with a PIN'), trailing: const Icon(Icons.chevron_right_rounded), onTap: configureAppPin),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.fingerprint_rounded),
-                title: const Text('Fingerprint / Face Unlock'),
-                subtitle: Text(appBiometricEnabled.value ? 'Enabled' : 'Use device biometrics'),
-                trailing: Switch(
-                  value: appBiometricEnabled.value,
-                  onChanged: (_) => toggleBiometric(),
-                ),
-              ),
+              ListTile(leading: const Icon(Icons.fingerprint_rounded), title: const Text('Fingerprint / Face Unlock'), subtitle: Text(appBiometricEnabled.value ? 'Enabled' : 'Use device biometrics'), trailing: Switch(value: appBiometricEnabled.value, onChanged: (_) => toggleBiometric())),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
@@ -1485,8 +1367,8 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
-                'Add Transaction',
+              Text(
+                widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -1581,7 +1463,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 ),
                 icon: const Icon(Icons.save_rounded),
                 label: const Text(
-                  widget.initialItem == null ? 'Save Transaction' : 'Update Transaction',
+                  'Save Transaction',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1633,10 +1515,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     super.dispose();
   }
 }
-).hasMatch(pin) &&
-                  pin == confirmController.text) {
-                Navigator.pop(dialogContext, pin);
-              }
+).hasMatch(pin) && pin == confirmController.text) Navigator.pop(dialogContext, pin);
             },
             child: const Text('Save PIN'),
           ),
@@ -1651,48 +1530,36 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('biometric_enabled', false);
       appBiometricEnabled.value = false;
+      appUnlocked.value = true;
       appLockEnabled.value = false;
       return;
     }
     await secureStorage.write(key: 'app_pin', value: result);
     appLockEnabled.value = true;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('App PIN enabled. Restart the app to lock it.')),
-      );
-    }
+    appUnlocked.value = false;
   }
 
   Future<void> toggleBiometric() async {
-    final prefs = await SharedPreferences.getInstance();
     if (!appLockEnabled.value) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Set an App PIN first.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Set an App PIN first.')));
       return;
     }
     try {
       final auth = LocalAuthentication();
       final available = await auth.getAvailableBiometrics();
       if (available.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No fingerprint or face unlock is enrolled on this device.')),
-        );
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No fingerprint or face unlock is enrolled on this device.')));
         return;
       }
       final enabled = !appBiometricEnabled.value;
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('biometric_enabled', enabled);
       appBiometricEnabled.value = enabled;
       if (mounted) setState(() {});
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric unlock is not available on this device.')),
-      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometric unlock is not available on this device.')));
     }
   }
-
   Widget buildSettings() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -1957,7 +1824,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 ),
                 icon: const Icon(Icons.save_rounded),
                 label: const Text(
-                  widget.initialItem == null ? 'Save Transaction' : 'Update Transaction',
+                  'Save Transaction',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
