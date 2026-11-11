@@ -243,7 +243,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildBudgetCard() {
-    final progress = (currentMonthExpense / monthlyBudget).clamp(0.0, 1.0);
+    final progress = (currentMonthExpense / monthlyBudget).clamp(0.0, 1.0).toDouble();
     final remaining = monthlyBudget - currentMonthExpense;
     return Card(
       child: Padding(
