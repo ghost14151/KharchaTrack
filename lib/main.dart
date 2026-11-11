@@ -160,14 +160,11 @@ class _AppLockScreenState extends State<AppLockScreen> {
     try {
       final available = await auth.getAvailableBiometrics();
       if (available.isNotEmpty) {
-        final ok = await auth.authenticate(
-          localizedReason: 'Unlock KharchaTrack',
-          biometricOnly: true,
-        );
+        final ok = await auth.authenticate(localizedReason: 'Unlock KharchaTrack', biometricOnly: true);
         if (ok) appUnlocked.value = true;
       }
     } catch (_) {
-      // The PIN remains available if biometrics cannot be used.
+      // PIN remains available if biometrics cannot be used.
     }
     if (mounted) setState(() => busy = false);
   }
@@ -181,44 +178,20 @@ class _AppLockScreenState extends State<AppLockScreen> {
     }
   }
   @override
-  void dispose() {
-    pinController.dispose();
-    super.dispose();
-  }
+  void dispose() { pinController.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_rounded, size: 58),
-                const SizedBox(height: 16),
-                const Text('KharchaTrack is locked', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('Enter your 4–6 digit app PIN.'),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: pinController,
-                  keyboardType: TextInputType.number,
-                  obscureText: true,
-                  maxLength: 6,
-                  decoration: InputDecoration(labelText: 'App PIN', errorText: errorText, border: const OutlineInputBorder()),
-                  onSubmitted: (_) => unlockPin(),
-                ),
-                SizedBox(width: double.infinity, child: FilledButton(onPressed: unlockPin, child: const Text('Unlock'))),
-                if (appBiometricEnabled.value)
-                  TextButton.icon(onPressed: busy ? null : unlockBiometric, icon: const Icon(Icons.fingerprint), label: const Text('Use fingerprint / face')),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    return Scaffold(body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.lock_rounded, size: 58),
+      const SizedBox(height: 16),
+      const Text('KharchaTrack is locked', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      const Text('Enter your 4–6 digit app PIN.'),
+      const SizedBox(height: 20),
+      TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: InputDecoration(labelText: 'App PIN', errorText: errorText, border: const OutlineInputBorder()), onSubmitted: (_) => unlockPin()),
+      SizedBox(width: double.infinity, child: FilledButton(onPressed: unlockPin, child: const Text('Unlock'))),
+      if (appBiometricEnabled.value) TextButton.icon(onPressed: busy ? null : unlockBiometric, icon: const Icon(Icons.fingerprint), label: const Text('Use fingerprint / face')),
+    ])))));
   }
 }
 class HomePage extends StatefulWidget {
@@ -1118,23 +1091,13 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> exportBackup() async {
     final prefs = await SharedPreferences.getInstance();
-    final backup = <String, dynamic>{
-      'format': 'KharchaTrackBackup',
-      'version': 1,
-      'createdAt': DateTime.now().toIso8601String(),
-      'monthlyBudget': monthlyBudget,
-      'darkMode': prefs.getBool('dark_mode') ?? false,
-      'transactions': transactions.map((item) => item.toMap()).toList(),
-    };
+    final backup = <String, dynamic>{'format': 'KharchaTrackBackup', 'version': 1, 'createdAt': DateTime.now().toIso8601String(), 'monthlyBudget': monthlyBudget, 'darkMode': prefs.getBool('dark_mode') ?? false, 'transactions': transactions.map((item) => item.toMap()).toList()};
     final now = DateTime.now();
     final stamp = now.year.toString() + now.month.toString().padLeft(2, '0') + now.day.toString().padLeft(2, '0');
     final dir = await getTemporaryDirectory();
     final file = File(dir.path + '/KharchaTrack_Backup_' + stamp + '.json');
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
-    await SharePlus.instance.share(ShareParams(
-      text: 'KharchaTrack backup. Keep this file private because it contains financial records.',
-      files: [XFile(file.path)],
-    ));
+    await SharePlus.instance.share(ShareParams(text: 'KharchaTrack backup. Keep this file private because it contains financial records.', files: [XFile(file.path)]));
   }
 
   Future<void> restoreBackup() async {
@@ -1142,62 +1105,50 @@ class _HomePageState extends State<HomePage> {
       final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
       if (picked == null || picked.files.single.path == null) return;
       final decoded = jsonDecode(await File(picked.files.single.path!).readAsString());
-      if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) {
-        throw const FormatException('Unsupported KharchaTrack backup file.');
-      }
-      final restored = (decoded['transactions'] as List).map((entry) {
-        if (entry is! Map) throw const FormatException('Invalid transaction in backup.');
-        return TransactionItem.fromMap(Map<String, dynamic>.from(entry));
-      }).toList();
+      if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) throw const FormatException('Unsupported KharchaTrack backup file.');
+      final restored = (decoded['transactions'] as List).map((entry) { if (entry is! Map) throw const FormatException('Invalid transaction in backup.'); return TransactionItem.fromMap(Map<String, dynamic>.from(entry)); }).toList();
       final budget = (decoded['monthlyBudget'] as num?)?.toDouble() ?? 0;
       if (budget < 0) throw const FormatException('Invalid monthly budget.');
       if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Restore backup?'),
-          content: Text('This replaces ' + transactions.length.toString() + ' current transactions with ' + restored.length.toString() + ' backup transactions.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore')),
-          ],
-        ),
-      );
+      final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Restore backup?'), content: Text('This replaces ' + transactions.length.toString() + ' current transactions with ' + restored.length.toString() + ' backup transactions.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore'))]));
       if (confirmed != true) return;
       final prefs = await SharedPreferences.getInstance();
       setState(() { transactions..clear()..addAll(restored); monthlyBudget = budget; });
       await saveTransactions();
       await prefs.setDouble('monthly_budget', budget);
-      if (decoded['darkMode'] is bool) {
-        final dark = decoded['darkMode'] as bool;
-        await prefs.setBool('dark_mode', dark);
-        appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light;
-      }
+      if (decoded['darkMode'] is bool) { final dark = decoded['darkMode'] as bool; await prefs.setBool('dark_mode', dark); appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light; }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup restored successfully.')));
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: ' + error.toString())));
-    }
+    } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: ' + error.toString()))); }
   }
 
   Future<void> configureAppPin() async {
     final pinController = TextEditingController();
     final confirmController = TextEditingController();
     final isEnabled = appLockEnabled.value;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(isEnabled ? 'Change App PIN' : 'Set App PIN'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'New 4–6 digit PIN')),
-          TextField(controller: confirmController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'Confirm PIN')),
-        ]),
-        actions: [
-          if (isEnabled) TextButton(onPressed: () => Navigator.pop(dialogContext, 'disable'), child: const Text('Disable Lock')),
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final pin = pinController.text;
-              if (RegExp(r'^[0-9]{4,6}
+    final result = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(title: Text(isEnabled ? 'Change App PIN' : 'Set App PIN'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'New 4–6 digit PIN')), TextField(controller: confirmController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'Confirm PIN'))]), actions: [if (isEnabled) TextButton(onPressed: () => Navigator.pop(dialogContext, 'disable'), child: const Text('Disable Lock')), TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () { final pin = pinController.text; final digitsOnly = pin.codeUnits.every((digit) => digit >= 48 && digit <= 57); if (pin.length >= 4 && pin.length <= 6 && digitsOnly && pin == confirmController.text) Navigator.pop(dialogContext, pin); }, child: const Text('Save PIN'))]));
+    pinController.dispose();
+    confirmController.dispose();
+    if (result == null) return;
+    if (result == 'disable') { final prefs = await SharedPreferences.getInstance(); await secureStorage.delete(key: 'app_pin'); await prefs.setBool('biometric_enabled', false); appBiometricEnabled.value = false; appUnlocked.value = true; appLockEnabled.value = false; return; }
+    await secureStorage.write(key: 'app_pin', value: result);
+    appLockEnabled.value = true;
+    appUnlocked.value = false;
+  }
+
+  Future<void> toggleBiometric() async {
+    if (!appLockEnabled.value) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Set an App PIN first.'))); return; }
+    try {
+      final auth = LocalAuthentication();
+      final available = await auth.getAvailableBiometrics();
+      if (available.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No fingerprint or face unlock is enrolled on this device.'))); return; }
+      final enabled = !appBiometricEnabled.value;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('biometric_enabled', enabled);
+      appBiometricEnabled.value = enabled;
+      if (mounted) setState(() {});
+    } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometric unlock is not available on this device.'))); }
+  }
+  Widget buildSettings() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       children: [
@@ -1463,368 +1414,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 ),
                 icon: const Icon(Icons.save_rounded),
                 label: const Text(
-                  'Save Transaction',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> save() async {
-    final amount = double.tryParse(
-      amountController.text.trim(),
-    );
-
-    if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter a valid amount'),
-        ),
-      );
-      return;
-    }
-
-    final title = titleController.text.trim().isEmpty
-        ? category
-        : titleController.text.trim();
-
-    await widget.onSave(
-      TransactionItem(
-        title: title,
-        category: category,
-        amount: amount,
-        isIncome: isIncome,
-        date: widget.initialItem?.date ?? DateTime.now(),
-      ),
-    );
-
-    if (mounted) Navigator.pop(context);
-  }
-
-  @override
-  void dispose() {
-    amountController.dispose();
-    titleController.dispose();
-    super.dispose();
-  }
-}
-).hasMatch(pin) && pin == confirmController.text) Navigator.pop(dialogContext, pin);
-            },
-            child: const Text('Save PIN'),
-          ),
-        ],
-      ),
-    );
-    pinController.dispose();
-    confirmController.dispose();
-    if (result == null) return;
-    if (result == 'disable') {
-      await secureStorage.delete(key: 'app_pin');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('biometric_enabled', false);
-      appBiometricEnabled.value = false;
-      appUnlocked.value = true;
-      appLockEnabled.value = false;
-      return;
-    }
-    await secureStorage.write(key: 'app_pin', value: result);
-    appLockEnabled.value = true;
-    appUnlocked.value = false;
-  }
-
-  Future<void> toggleBiometric() async {
-    if (!appLockEnabled.value) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Set an App PIN first.')));
-      return;
-    }
-    try {
-      final auth = LocalAuthentication();
-      final available = await auth.getAvailableBiometrics();
-      if (available.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No fingerprint or face unlock is enrolled on this device.')));
-        return;
-      }
-      final enabled = !appBiometricEnabled.value;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('biometric_enabled', enabled);
-      appBiometricEnabled.value = enabled;
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometric unlock is not available on this device.')));
-    }
-  }
-  Widget buildSettings() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      children: [
-        const Text(
-          'Settings',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Personalize your KharchaTrack experience',
-          style: TextStyle(color: Colors.grey.shade600),
-        ),
-        const SizedBox(height: 20),
-        Card(
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.currency_rupee_rounded),
-                title: Text('Currency'),
-                subtitle: Text('Indian Rupee (₹)'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.savings_outlined),
-                title: const Text('Monthly Budget'),
-                subtitle: Text(
-                  monthlyBudget > 0
-                      ? '₹${monthlyBudget.toStringAsFixed(0)} per month'
-                      : 'Set a monthly spending limit',
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: editMonthlyBudget,
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.dark_mode_outlined),
-                title: const Text('Dark Mode'),
-                subtitle: Text(
-                  appThemeMode.value == ThemeMode.dark
-                      ? 'Dark theme enabled'
-                      : 'Use dark theme',
-                ),
-                trailing: Switch(
-                  value: appThemeMode.value == ThemeMode.dark,
-                  onChanged: (value) async {
-                    appThemeMode.value =
-                        value ? ThemeMode.dark : ThemeMode.light;
-
-                    final prefs =
-                        await SharedPreferences.getInstance();
-                    await prefs.setBool('dark_mode', value);
-
-                    setState(() {});
-                  },
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined),
-                title: const Text('Export Data'),
-                subtitle: const Text('Share transactions as CSV'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: exportData,
-              ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.privacy_tip_outlined),
-                title: Text('Privacy'),
-                subtitle: Text('Your transaction data stays on your device'),
-              ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.info_outline_rounded),
-                title: Text('About'),
-                subtitle: Text('KharchaTrack v1.1.0'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-}
-
-class AddTransactionSheet extends StatefulWidget {
-  final Future<void> Function(TransactionItem) onSave;
-  final bool initialIsIncome;
-  final TransactionItem? initialItem;
-
-  const AddTransactionSheet({
-    super.key,
-    required this.onSave,
-    this.initialIsIncome = false,
-    this.initialItem,
-  });
-
-  @override
-  State<AddTransactionSheet> createState() => _AddTransactionSheetState();
-}
-
-class _AddTransactionSheetState extends State<AddTransactionSheet> {
-  final amountController = TextEditingController();
-  final titleController = TextEditingController();
-
-  late bool isIncome;
-
-  @override
-  void initState() {
-    super.initState();
-    final item = widget.initialItem;
-    isIncome = item?.isIncome ?? widget.initialIsIncome;
-    if (item != null) {
-      amountController.text = item.amount.toString();
-      titleController.text = item.title;
-      if (categories.contains(item.category)) category = item.category;
-    }
-  }
-
-  final categories = [
-    'Food',
-    'Travel',
-    'Shopping',
-    'Bills',
-    'Health',
-    'Education',
-    'Recharge',
-    'Other',
-  ];
-
-  String category = 'Food';
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(28),
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 12,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Add Transaction',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 18),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                    value: false,
-                    label: Text('Expense'),
-                    icon: Icon(Icons.arrow_upward_rounded),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Income'),
-                    icon: Icon(Icons.arrow_downward_rounded),
-                  ),
-                ],
-                selected: {isIncome},
-                onSelectionChanged: (value) {
-                  setState(() {
-                    isIncome = value.first;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Amount',
-                  hintText: '0',
-                  prefixText: '₹ ',
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: titleController,
-                decoration: InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'e.g. Lunch',
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: InputDecoration(
-                  labelText: 'Category',
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                items: categories
-                    .map(
-                      (item) => DropdownMenuItem(
-                        value: item,
-                        child: Text(item),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      category = value;
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: save,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: const Icon(Icons.save_rounded),
-                label: const Text(
-                  'Save Transaction',
+                  widget.initialItem == null ? 'Save Transaction' : 'Update Transaction',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
