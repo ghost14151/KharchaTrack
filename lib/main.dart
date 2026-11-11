@@ -7,8 +7,73 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
+final ValueNotifier<String> appCurrencyCode = ValueNotifier('INR');
+final ValueNotifier<bool> dailyReminderEnabled = ValueNotifier(false);
+final ValueNotifier<int> dailyReminderHour = ValueNotifier(20);
+final ValueNotifier<int> dailyReminderMinute = ValueNotifier(0);
+final FlutterLocalNotificationsPlugin dailyReminderPlugin = FlutterLocalNotificationsPlugin();
+
+const Map<String, String> currencySymbols = {
+  'INR': '₹',
+  'USD': r'$',
+  'EUR': '€',
+  'GBP': '£',
+  'AED': 'د.إ',
+  'CAD': r'CA$',
+  'AUD': r'A$',
+};
+
+String formatMoney(double amount, {int decimals = 0}) {
+  final symbol = currencySymbols[appCurrencyCode.value] ?? '₹';
+  return '$symbol${amount.toStringAsFixed(decimals)}';
+}
+
+Future<void> initializeDailyReminderPlugin() async {
+  tz_data.initializeTimeZones();
+  try {
+    final deviceTimezone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(deviceTimezone.identifier));
+  } catch (_) {
+    tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
+  }
+  await dailyReminderPlugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
+  );
+}
+
+Future<void> scheduleDailyReminder() async {
+  final now = tz.TZDateTime.now(tz.local);
+  var scheduled = tz.TZDateTime(
+    tz.local, now.year, now.month, now.day,
+    dailyReminderHour.value, dailyReminderMinute.value,
+  );
+  if (!scheduled.isAfter(now)) scheduled = scheduled.add(const Duration(days: 1));
+  await dailyReminderPlugin.zonedSchedule(
+    1,
+    'KharchaTrack Reminder',
+    'Aaj ka income aur expense record karna na bhoolein.',
+    scheduled,
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_reminder',
+        'Daily Reminder',
+        channelDescription: 'Daily reminder to record income and expenses',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+    ),
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    matchDateTimeComponents: DateTimeComponents.time,
+  );
+}
 final ValueNotifier<bool> appLockEnabled = ValueNotifier(false);
 final ValueNotifier<bool> appUnlocked = ValueNotifier(true);
 final ValueNotifier<bool> appBiometricEnabled = ValueNotifier(false);
@@ -19,12 +84,22 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final savedDarkMode = prefs.getBool('dark_mode') ?? false;
+  appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
+  dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
+  dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
+  dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
 
   appThemeMode.value =
       savedDarkMode ? ThemeMode.dark : ThemeMode.light;
   appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
   appUnlocked.value = !appLockEnabled.value;
   appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+  try {
+    await initializeDailyReminderPlugin();
+    if (dailyReminderEnabled.value) await scheduleDailyReminder();
+  } catch (_) {
+    // Keep the app usable if notification setup is unavailable.
+  }
 
   runApp(const KharchaTrackApp());
 }
@@ -294,7 +369,7 @@ class _HomePageState extends State<HomePage> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(
             labelText: 'Budget amount',
-            prefixText: '₹ ',
+            prefixText: '${currencySymbols[appCurrencyCode.value] ?? '₹'} ',
             hintText: 'e.g. 10000',
           ),
         ),
@@ -339,7 +414,7 @@ class _HomePageState extends State<HomePage> {
                 TextButton(onPressed: editMonthlyBudget, child: const Text('Edit')),
               ],
             ),
-            Text('₹${currentMonthExpense.toStringAsFixed(0)} spent of ₹${monthlyBudget.toStringAsFixed(0)}'),
+            Text('${formatMoney(currentMonthExpense)} spent of ${formatMoney(monthlyBudget)}'),
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
@@ -352,8 +427,8 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 8),
             Text(
               remaining >= 0
-                  ? '₹${remaining.toStringAsFixed(0)} remaining this month'
-                  : 'Budget exceeded by ₹${(-remaining).toStringAsFixed(0)}',
+                  ? '${formatMoney(remaining)} remaining this month'
+                  : 'Budget exceeded by ${formatMoney(-remaining)}',
               style: TextStyle(
                 color: remaining >= 0 ? Colors.green : Colors.red,
                 fontWeight: FontWeight.w600,
@@ -534,7 +609,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 8),
               Text(
-                '₹${balance.toStringAsFixed(2)}',
+                '${formatMoney(balance, decimals: 2)}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 38,
@@ -748,7 +823,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 4),
             Text(
-              '₹${amount.toStringAsFixed(0)}',
+              '${formatMoney(amount)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 19,
@@ -791,7 +866,7 @@ class _HomePageState extends State<HomePage> {
           '${item.category} • ${item.date.day}/${item.date.month}/${item.date.year}',
         ),
         trailing: Text(
-          '${item.isIncome ? '+' : '-'}₹${item.amount.toStringAsFixed(0)}',
+          '${item.isIncome ? '+' : '-'}${formatMoney(item.amount)}',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: color,
@@ -938,7 +1013,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const Text('Income'),
                     Text(
-                      '₹${income.toStringAsFixed(0)}',
+                      '${formatMoney(income)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
@@ -961,7 +1036,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const Text('Expense'),
                     Text(
-                      '₹${expense.toStringAsFixed(0)}',
+                      '${formatMoney(expense)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.red,
@@ -1009,7 +1084,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '₹${balance.toStringAsFixed(2)}',
+                        '${formatMoney(balance, decimals: 2)}',
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -1091,7 +1166,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> exportBackup() async {
     final prefs = await SharedPreferences.getInstance();
-    final backup = <String, dynamic>{'format': 'KharchaTrackBackup', 'version': 1, 'createdAt': DateTime.now().toIso8601String(), 'monthlyBudget': monthlyBudget, 'darkMode': prefs.getBool('dark_mode') ?? false, 'transactions': transactions.map((item) => item.toMap()).toList()};
+    final backup = <String, dynamic>{'format': 'KharchaTrackBackup', 'version': 1, 'createdAt': DateTime.now().toIso8601String(), 'monthlyBudget': monthlyBudget, 'darkMode': prefs.getBool('dark_mode') ?? false, 'currencyCode': appCurrencyCode.value, 'transactions': transactions.map((item) => item.toMap()).toList()};
     final now = DateTime.now();
     final stamp = now.year.toString() + now.month.toString().padLeft(2, '0') + now.day.toString().padLeft(2, '0');
     final dir = await getTemporaryDirectory();
@@ -1108,6 +1183,7 @@ class _HomePageState extends State<HomePage> {
       if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) throw const FormatException('Unsupported KharchaTrack backup file.');
       final restored = (decoded['transactions'] as List).map((entry) { if (entry is! Map) throw const FormatException('Invalid transaction in backup.'); return TransactionItem.fromMap(Map<String, dynamic>.from(entry)); }).toList();
       final budget = (decoded['monthlyBudget'] as num?)?.toDouble() ?? 0;
+      final restoredCurrency = decoded['currencyCode'] is String && currencySymbols.containsKey(decoded['currencyCode']) ? decoded['currencyCode'] as String : appCurrencyCode.value;
       if (budget < 0) throw const FormatException('Invalid monthly budget.');
       if (!mounted) return;
       final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Restore backup?'), content: Text('This replaces ' + transactions.length.toString() + ' current transactions with ' + restored.length.toString() + ' backup transactions.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore'))]));
@@ -1116,6 +1192,8 @@ class _HomePageState extends State<HomePage> {
       setState(() { transactions..clear()..addAll(restored); monthlyBudget = budget; });
       await saveTransactions();
       await prefs.setDouble('monthly_budget', budget);
+      await prefs.setString('currency_code', restoredCurrency);
+      appCurrencyCode.value = restoredCurrency;
       if (decoded['darkMode'] is bool) { final dark = decoded['darkMode'] as bool; await prefs.setBool('dark_mode', dark); appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light; }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup restored successfully.')));
     } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: ' + error.toString()))); }
@@ -1148,6 +1226,50 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() {});
     } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometric unlock is not available on this device.'))); }
   }
+
+  Future<void> updateDailyReminder(bool enabled) async {
+    if (enabled) {
+      final android = dailyReminderPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final granted = await android?.requestNotificationsPermission();
+      if (granted != true) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notification permission is needed for daily reminders.')));
+        return;
+      }
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('daily_reminder_enabled', enabled);
+    dailyReminderEnabled.value = enabled;
+    if (enabled) {
+      await scheduleDailyReminder();
+    } else {
+      await dailyReminderPlugin.cancel(1);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> chooseDailyReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: dailyReminderHour.value, minute: dailyReminderMinute.value),
+    );
+    if (picked == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    dailyReminderHour.value = picked.hour;
+    dailyReminderMinute.value = picked.minute;
+    await prefs.setInt('daily_reminder_hour', picked.hour);
+    await prefs.setInt('daily_reminder_minute', picked.minute);
+    if (dailyReminderEnabled.value) await scheduleDailyReminder();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> changeCurrency(String? code) async {
+    if (code == null || !currencySymbols.containsKey(code)) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('currency_code', code);
+    appCurrencyCode.value = code;
+    if (mounted) setState(() {});
+  }
+
   Widget buildSettings() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -1168,10 +1290,32 @@ class _HomePageState extends State<HomePage> {
         Card(
           child: Column(
             children: [
-              const ListTile(
-                leading: Icon(Icons.currency_rupee_rounded),
-                title: Text('Currency'),
-                subtitle: Text('Indian Rupee (₹)'),
+              ListTile(
+                leading: const Icon(Icons.currency_exchange_rounded),
+                title: const Text('App Currency'),
+                subtitle: const Text('Used for all amounts in this app'),
+                trailing: DropdownButton<String>(
+                  value: appCurrencyCode.value,
+                  items: currencySymbols.entries.map((entry) => DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text('${entry.key} (${entry.value})'),
+                  )).toList(),
+                  onChanged: changeCurrency,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: const Text('Daily Reminder'),
+                subtitle: Text(dailyReminderEnabled.value ? 'Every day at ${TimeOfDay(hour: dailyReminderHour.value, minute: dailyReminderMinute.value).format(context)}' : 'Get a reminder to record your daily expenses'),
+                trailing: Switch(value: dailyReminderEnabled.value, onChanged: updateDailyReminder),
+              ),
+              ListTile(
+                leading: const Icon(Icons.schedule_rounded),
+                title: const Text('Reminder Time'),
+                subtitle: const Text('Choose when the daily reminder appears'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: chooseDailyReminderTime,
               ),
               const Divider(height: 1),
               ListTile(
@@ -1179,7 +1323,7 @@ class _HomePageState extends State<HomePage> {
                 title: const Text('Monthly Budget'),
                 subtitle: Text(
                   monthlyBudget > 0
-                      ? '₹${monthlyBudget.toStringAsFixed(0)} per month'
+                      ? '${formatMoney(monthlyBudget)} per month'
                       : 'Set a monthly spending limit',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
@@ -1228,7 +1372,7 @@ class _HomePageState extends State<HomePage> {
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.2.0'),
+                subtitle: Text('KharchaTrack v1.3.0'),
               ),
             ],
           ),
@@ -1355,7 +1499,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 decoration: InputDecoration(
                   labelText: 'Amount',
                   hintText: '0',
-                  prefixText: '₹ ',
+                  prefixText: '${currencySymbols[appCurrencyCode.value] ?? '₹'} ',
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
