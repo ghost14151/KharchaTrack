@@ -367,7 +367,7 @@ class _HomePageState extends State<HomePage> {
         content: TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Budget amount',
             prefixText: '${currencySymbols[appCurrencyCode.value] ?? '₹'} ',
             hintText: 'e.g. 10000',
