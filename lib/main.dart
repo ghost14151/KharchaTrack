@@ -352,7 +352,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
               label: Text(
-                widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
+                'Add Transaction',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             )
