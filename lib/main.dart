@@ -1,20 +1,105 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
+final ValueNotifier<String> appCurrencyCode = ValueNotifier('INR');
+final ValueNotifier<bool> dailyReminderEnabled = ValueNotifier(false);
+final ValueNotifier<int> dailyReminderHour = ValueNotifier(20);
+final ValueNotifier<int> dailyReminderMinute = ValueNotifier(0);
+final FlutterLocalNotificationsPlugin dailyReminderPlugin = FlutterLocalNotificationsPlugin();
+
+const Map<String, String> currencySymbols = {
+  'INR': '₹',
+  'USD': r'$',
+  'EUR': '€',
+  'GBP': '£',
+  'AED': 'د.إ',
+  'CAD': r'CA$',
+  'AUD': r'A$',
+};
+
+String formatMoney(double amount, {int decimals = 0}) {
+  final symbol = currencySymbols[appCurrencyCode.value] ?? '₹';
+  return '$symbol${amount.toStringAsFixed(decimals)}';
+}
+
+Future<void> initializeDailyReminderPlugin() async {
+  tz_data.initializeTimeZones();
+  try {
+    final deviceTimezone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(deviceTimezone.identifier));
+  } catch (_) {
+    tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
+  }
+  await dailyReminderPlugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
+  );
+}
+
+Future<void> scheduleDailyReminder() async {
+  final now = tz.TZDateTime.now(tz.local);
+  var scheduled = tz.TZDateTime(
+    tz.local, now.year, now.month, now.day,
+    dailyReminderHour.value, dailyReminderMinute.value,
+  );
+  if (!scheduled.isAfter(now)) scheduled = scheduled.add(const Duration(days: 1));
+  await dailyReminderPlugin.zonedSchedule(
+    1,
+    'KharchaTrack Reminder',
+    'Aaj ka income aur expense record karna na bhoolein.',
+    scheduled,
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_reminder',
+        'Daily Reminder',
+        channelDescription: 'Daily reminder to record income and expenses',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+    ),
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    matchDateTimeComponents: DateTimeComponents.time,
+  );
+}
+final ValueNotifier<bool> appLockEnabled = ValueNotifier(false);
+final ValueNotifier<bool> appUnlocked = ValueNotifier(true);
+final ValueNotifier<bool> appBiometricEnabled = ValueNotifier(false);
+const FlutterSecureStorage secureStorage = FlutterSecureStorage();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final prefs = await SharedPreferences.getInstance();
   final savedDarkMode = prefs.getBool('dark_mode') ?? false;
+  appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
+  dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
+  dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
+  dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
 
   appThemeMode.value =
       savedDarkMode ? ThemeMode.dark : ThemeMode.light;
+  appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
+  appUnlocked.value = !appLockEnabled.value;
+  appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+  try {
+    await initializeDailyReminderPlugin();
+    if (dailyReminderEnabled.value) await scheduleDailyReminder();
+  } catch (_) {
+    // Keep the app usable if notification setup is unavailable.
+  }
 
   runApp(const KharchaTrackApp());
 }
@@ -106,13 +191,84 @@ class KharchaTrackApp extends StatelessWidget {
         ),
       ),
       themeMode: themeMode,
-      home: const HomePage(),
+      home: const AppLockGate(),
     );
       },
     );
   }
 }
 
+class AppLockGate extends StatelessWidget {
+  const AppLockGate({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: appLockEnabled,
+      builder: (context, enabled, _) => ValueListenableBuilder<bool>(
+        valueListenable: appUnlocked,
+        builder: (context, unlocked, _) =>
+            (!enabled || unlocked) ? const HomePage() : const AppLockScreen(),
+      ),
+    );
+  }
+}
+
+class AppLockScreen extends StatefulWidget {
+  const AppLockScreen({super.key});
+  @override
+  State<AppLockScreen> createState() => _AppLockScreenState();
+}
+
+class _AppLockScreenState extends State<AppLockScreen> {
+  final pinController = TextEditingController();
+  final auth = LocalAuthentication();
+  String? errorText;
+  bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => unlockBiometric());
+  }
+  Future<void> unlockBiometric() async {
+    if (!appBiometricEnabled.value || busy) return;
+    setState(() => busy = true);
+    try {
+      final available = await auth.getAvailableBiometrics();
+      if (available.isNotEmpty) {
+        final ok = await auth.authenticate(localizedReason: 'Unlock KharchaTrack', biometricOnly: true);
+        if (ok) appUnlocked.value = true;
+      }
+    } catch (_) {
+      // PIN remains available if biometrics cannot be used.
+    }
+    if (mounted) setState(() => busy = false);
+  }
+  Future<void> unlockPin() async {
+    final savedPin = await secureStorage.read(key: 'app_pin');
+    if (savedPin != null && pinController.text == savedPin) {
+      appUnlocked.value = true;
+    } else {
+      setState(() => errorText = 'Incorrect PIN. Try again.');
+      pinController.clear();
+    }
+  }
+  @override
+  void dispose() { pinController.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.lock_rounded, size: 58),
+      const SizedBox(height: 16),
+      const Text('KharchaTrack is locked', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      const Text('Enter your 4–6 digit app PIN.'),
+      const SizedBox(height: 20),
+      TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: InputDecoration(labelText: 'App PIN', errorText: errorText, border: const OutlineInputBorder()), onSubmitted: (_) => unlockPin()),
+      SizedBox(width: double.infinity, child: FilledButton(onPressed: unlockPin, child: const Text('Unlock'))),
+      if (appBiometricEnabled.value) TextButton.icon(onPressed: busy ? null : unlockBiometric, icon: const Icon(Icons.fingerprint), label: const Text('Use fingerprint / face')),
+    ])))));
+  }
+}
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -124,6 +280,9 @@ class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
   final List<TransactionItem> transactions = [];
+  String historySearchQuery = '';
+  final TextEditingController historySearchController = TextEditingController();
+  double monthlyBudget = 0;
 
   @override
   void initState() {
@@ -134,8 +293,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> loadTransactions() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('transactions');
+    monthlyBudget = prefs.getDouble('monthly_budget') ?? 0;
 
-    if (saved == null) return;
+    if (saved == null) {
+      if (mounted) setState(() {});
+      return;
+    }
 
     final List<dynamic> data = jsonDecode(saved);
 
@@ -169,6 +332,114 @@ class _HomePageState extends State<HomePage> {
 
   double get balance => income - expense;
 
+  double get currentMonthExpense {
+    final now = DateTime.now();
+    return transactions
+        .where((t) => !t.isIncome && t.date.year == now.year && t.date.month == now.month)
+        .fold(0, (sum, t) => sum + t.amount);
+  }
+
+  Future<void> editTransaction(TransactionItem item) async {
+    final index = transactions.indexOf(item);
+    if (index < 0) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddTransactionSheet(
+        initialItem: item,
+        onSave: (updated) async {
+          setState(() => transactions[index] = updated);
+          await saveTransactions();
+        },
+      ),
+    );
+  }
+
+  Future<void> editMonthlyBudget() async {
+    final controller = TextEditingController(
+      text: monthlyBudget > 0 ? monthlyBudget.toStringAsFixed(0) : '',
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Monthly Budget'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Budget amount',
+            prefixText: '${currencySymbols[appCurrencyCode.value] ?? '₹'} ',
+            hintText: 'e.g. 10000',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text.trim());
+              if (amount != null && amount > 0) {
+                Navigator.pop(dialogContext, amount);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('monthly_budget', value);
+    if (!mounted) return;
+    setState(() => monthlyBudget = value);
+  }
+
+  Widget buildBudgetCard() {
+    final progress = (currentMonthExpense / monthlyBudget).clamp(0.0, 1.0).toDouble();
+    final remaining = monthlyBudget - currentMonthExpense;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Monthly Budget', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                TextButton(onPressed: editMonthlyBudget, child: const Text('Edit')),
+              ],
+            ),
+            Text('${formatMoney(currentMonthExpense)} spent of ${formatMoney(monthlyBudget)}'),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                color: currentMonthExpense > monthlyBudget ? Colors.red : const Color(0xFF168A4A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              remaining >= 0
+                  ? '${formatMoney(remaining)} remaining this month'
+                  : 'Budget exceeded by ${formatMoney(-remaining)}',
+              style: TextStyle(
+                color: remaining >= 0 ? Colors.green : Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void addTransaction() {
     showModalBottomSheet(
       context: context,
@@ -184,6 +455,12 @@ class _HomePageState extends State<HomePage> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    historySearchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -230,7 +507,7 @@ class _HomePageState extends State<HomePage> {
               foregroundColor: Colors.white,
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
+              label: Text(
                 'Add Transaction',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
@@ -332,7 +609,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 8),
               Text(
-                '₹${balance.toStringAsFixed(2)}',
+                '${formatMoney(balance, decimals: 2)}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 38,
@@ -397,6 +674,10 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+        if (monthlyBudget > 0) ...[
+          const SizedBox(height: 16),
+          buildBudgetCard(),
+        ],
         const SizedBox(height: 28),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -542,7 +823,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 4),
             Text(
-              '₹${amount.toStringAsFixed(0)}',
+              '${formatMoney(amount)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 19,
@@ -585,13 +866,14 @@ class _HomePageState extends State<HomePage> {
           '${item.category} • ${item.date.day}/${item.date.month}/${item.date.year}',
         ),
         trailing: Text(
-          '${item.isIncome ? '+' : '-'}₹${item.amount.toStringAsFixed(0)}',
+          '${item.isIncome ? '+' : '-'}${formatMoney(item.amount)}',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: color,
             fontSize: 15,
           ),
         ),
+        onTap: () => editTransaction(item),
         onLongPress: () {
           showDialog(
             context: context,
@@ -631,31 +913,62 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildHistory() {
-    return transactions.isEmpty
-        ? const Center(
-            child: Text('No transactions yet.'),
+    final query = historySearchQuery.trim().toLowerCase();
+    final filtered = transactions.where((item) {
+      return query.isEmpty ||
+          item.title.toLowerCase().contains(query) ||
+          item.category.toLowerCase().contains(query);
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      children: [
+        Text(
+          '${filtered.length} Transactions',
+          style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: historySearchController,
+          onChanged: (value) => setState(() => historySearchQuery = value),
+          decoration: InputDecoration(
+            hintText: 'Search title or category',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: historySearchQuery.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear_rounded),
+                    onPressed: () {
+                      historySearchController.clear();
+                      setState(() => historySearchQuery = '');
+                    },
+                  ),
+            filled: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Tap to edit • Long press to delete',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
+            child: Center(
+              child: Text(
+                transactions.isEmpty ? 'No transactions yet.' : 'No matching transactions found.',
+              ),
+            ),
           )
-        : ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            children: [
-              Text(
-                '${transactions.length} Transactions',
-                style: const TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Long press a transaction to delete it.',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ...transactions.map(transactionTile),
-            ],
-          );
+        else
+          ...filtered.map(transactionTile),
+      ],
+    );
   }
 
   Widget buildAnalytics() {
@@ -700,7 +1013,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const Text('Income'),
                     Text(
-                      '₹${income.toStringAsFixed(0)}',
+                      '${formatMoney(income)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
@@ -723,7 +1036,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const Text('Expense'),
                     Text(
-                      '₹${expense.toStringAsFixed(0)}',
+                      '${formatMoney(expense)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.red,
@@ -771,7 +1084,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '₹${balance.toStringAsFixed(2)}',
+                        '${formatMoney(balance, decimals: 2)}',
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -851,6 +1164,112 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> exportBackup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final backup = <String, dynamic>{'format': 'KharchaTrackBackup', 'version': 1, 'createdAt': DateTime.now().toIso8601String(), 'monthlyBudget': monthlyBudget, 'darkMode': prefs.getBool('dark_mode') ?? false, 'currencyCode': appCurrencyCode.value, 'transactions': transactions.map((item) => item.toMap()).toList()};
+    final now = DateTime.now();
+    final stamp = now.year.toString() + now.month.toString().padLeft(2, '0') + now.day.toString().padLeft(2, '0');
+    final dir = await getTemporaryDirectory();
+    final file = File(dir.path + '/KharchaTrack_Backup_' + stamp + '.json');
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
+    await SharePlus.instance.share(ShareParams(text: 'KharchaTrack backup. Keep this file private because it contains financial records.', files: [XFile(file.path)]));
+  }
+
+  Future<void> restoreBackup() async {
+    try {
+      final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['json']);
+      if (picked == null || picked.path == null) return;
+      final decoded = jsonDecode(await File(picked.path!).readAsString());
+      if (decoded is! Map<String, dynamic> || decoded['format'] != 'KharchaTrackBackup' || decoded['version'] != 1 || decoded['transactions'] is! List) throw const FormatException('Unsupported KharchaTrack backup file.');
+      final restored = (decoded['transactions'] as List).map((entry) { if (entry is! Map) throw const FormatException('Invalid transaction in backup.'); return TransactionItem.fromMap(Map<String, dynamic>.from(entry)); }).toList();
+      final budget = (decoded['monthlyBudget'] as num?)?.toDouble() ?? 0;
+      final restoredCurrency = decoded['currencyCode'] is String && currencySymbols.containsKey(decoded['currencyCode']) ? decoded['currencyCode'] as String : appCurrencyCode.value;
+      if (budget < 0) throw const FormatException('Invalid monthly budget.');
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Restore backup?'), content: Text('This replaces ' + transactions.length.toString() + ' current transactions with ' + restored.length.toString() + ' backup transactions.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore'))]));
+      if (confirmed != true) return;
+      final prefs = await SharedPreferences.getInstance();
+      setState(() { transactions..clear()..addAll(restored); monthlyBudget = budget; });
+      await saveTransactions();
+      await prefs.setDouble('monthly_budget', budget);
+      await prefs.setString('currency_code', restoredCurrency);
+      appCurrencyCode.value = restoredCurrency;
+      if (decoded['darkMode'] is bool) { final dark = decoded['darkMode'] as bool; await prefs.setBool('dark_mode', dark); appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light; }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup restored successfully.')));
+    } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: ' + error.toString()))); }
+  }
+
+  Future<void> configureAppPin() async {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    final isEnabled = appLockEnabled.value;
+    final result = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(title: Text(isEnabled ? 'Change App PIN' : 'Set App PIN'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: pinController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'New 4–6 digit PIN')), TextField(controller: confirmController, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'Confirm PIN'))]), actions: [if (isEnabled) TextButton(onPressed: () => Navigator.pop(dialogContext, 'disable'), child: const Text('Disable Lock')), TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () { final pin = pinController.text; final digitsOnly = pin.codeUnits.every((digit) => digit >= 48 && digit <= 57); if (pin.length >= 4 && pin.length <= 6 && digitsOnly && pin == confirmController.text) Navigator.pop(dialogContext, pin); }, child: const Text('Save PIN'))]));
+    pinController.dispose();
+    confirmController.dispose();
+    if (result == null) return;
+    if (result == 'disable') { final prefs = await SharedPreferences.getInstance(); await secureStorage.delete(key: 'app_pin'); await prefs.setBool('biometric_enabled', false); appBiometricEnabled.value = false; appUnlocked.value = true; appLockEnabled.value = false; return; }
+    await secureStorage.write(key: 'app_pin', value: result);
+    appLockEnabled.value = true;
+    appUnlocked.value = false;
+  }
+
+  Future<void> toggleBiometric() async {
+    if (!appLockEnabled.value) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Set an App PIN first.'))); return; }
+    try {
+      final auth = LocalAuthentication();
+      final available = await auth.getAvailableBiometrics();
+      if (available.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No fingerprint or face unlock is enrolled on this device.'))); return; }
+      final enabled = !appBiometricEnabled.value;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('biometric_enabled', enabled);
+      appBiometricEnabled.value = enabled;
+      if (mounted) setState(() {});
+    } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometric unlock is not available on this device.'))); }
+  }
+
+  Future<void> updateDailyReminder(bool enabled) async {
+    if (enabled) {
+      final android = dailyReminderPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final granted = await android?.requestNotificationsPermission();
+      if (granted != true) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notification permission is needed for daily reminders.')));
+        return;
+      }
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('daily_reminder_enabled', enabled);
+    dailyReminderEnabled.value = enabled;
+    if (enabled) {
+      await scheduleDailyReminder();
+    } else {
+      await dailyReminderPlugin.cancel(1);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> chooseDailyReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: dailyReminderHour.value, minute: dailyReminderMinute.value),
+    );
+    if (picked == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    dailyReminderHour.value = picked.hour;
+    dailyReminderMinute.value = picked.minute;
+    await prefs.setInt('daily_reminder_hour', picked.hour);
+    await prefs.setInt('daily_reminder_minute', picked.minute);
+    if (dailyReminderEnabled.value) await scheduleDailyReminder();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> changeCurrency(String? code) async {
+    if (code == null || !currencySymbols.containsKey(code)) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('currency_code', code);
+    appCurrencyCode.value = code;
+    if (mounted) setState(() {});
+  }
+
   Widget buildSettings() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -871,10 +1290,44 @@ class _HomePageState extends State<HomePage> {
         Card(
           child: Column(
             children: [
-              const ListTile(
-                leading: Icon(Icons.currency_rupee_rounded),
-                title: Text('Currency'),
-                subtitle: Text('Indian Rupee (₹)'),
+              ListTile(
+                leading: const Icon(Icons.currency_exchange_rounded),
+                title: const Text('App Currency'),
+                subtitle: const Text('Used for all amounts in this app'),
+                trailing: DropdownButton<String>(
+                  value: appCurrencyCode.value,
+                  items: currencySymbols.entries.map((entry) => DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text('${entry.key} (${entry.value})'),
+                  )).toList(),
+                  onChanged: changeCurrency,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: const Text('Daily Reminder'),
+                subtitle: Text(dailyReminderEnabled.value ? 'Every day at ${TimeOfDay(hour: dailyReminderHour.value, minute: dailyReminderMinute.value).format(context)}' : 'Get a reminder to record your daily expenses'),
+                trailing: Switch(value: dailyReminderEnabled.value, onChanged: updateDailyReminder),
+              ),
+              ListTile(
+                leading: const Icon(Icons.schedule_rounded),
+                title: const Text('Reminder Time'),
+                subtitle: const Text('Choose when the daily reminder appears'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: chooseDailyReminderTime,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.savings_outlined),
+                title: const Text('Monthly Budget'),
+                subtitle: Text(
+                  monthlyBudget > 0
+                      ? '${formatMoney(monthlyBudget)} per month'
+                      : 'Set a monthly spending limit',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: editMonthlyBudget,
               ),
               const Divider(height: 1),
               ListTile(
@@ -900,13 +1353,15 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.file_download_outlined),
-                title: const Text('Export Data'),
-                subtitle: const Text('Share transactions as CSV'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: exportData,
-              ),
+              ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('Export CSV'), subtitle: const Text('Share transactions as a spreadsheet'), trailing: const Icon(Icons.chevron_right_rounded), onTap: exportData),
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.backup_outlined), title: const Text('Create Backup'), subtitle: const Text('Save transactions and settings as JSON'), trailing: const Icon(Icons.chevron_right_rounded), onTap: exportBackup),
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.restore_rounded), title: const Text('Restore Backup'), subtitle: const Text('Replace current data from a backup file'), trailing: const Icon(Icons.chevron_right_rounded), onTap: restoreBackup),
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.lock_outline_rounded), title: const Text('App PIN Lock'), subtitle: Text(appLockEnabled.value ? 'PIN lock enabled' : 'Protect the app with a PIN'), trailing: const Icon(Icons.chevron_right_rounded), onTap: configureAppPin),
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.fingerprint_rounded), title: const Text('Fingerprint / Face Unlock'), subtitle: Text(appBiometricEnabled.value ? 'Enabled' : 'Use device biometrics'), trailing: Switch(value: appBiometricEnabled.value, onChanged: (_) => toggleBiometric())),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
@@ -917,7 +1372,7 @@ class _HomePageState extends State<HomePage> {
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.0.0'),
+                subtitle: Text('KharchaTrack v1.3.0'),
               ),
             ],
           ),
@@ -931,11 +1386,13 @@ class _HomePageState extends State<HomePage> {
 class AddTransactionSheet extends StatefulWidget {
   final Future<void> Function(TransactionItem) onSave;
   final bool initialIsIncome;
+  final TransactionItem? initialItem;
 
   const AddTransactionSheet({
     super.key,
     required this.onSave,
     this.initialIsIncome = false,
+    this.initialItem,
   });
 
   @override
@@ -946,7 +1403,19 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   final amountController = TextEditingController();
   final titleController = TextEditingController();
 
-  late bool isIncome = widget.initialIsIncome;
+  late bool isIncome;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.initialItem;
+    isIncome = item?.isIncome ?? widget.initialIsIncome;
+    if (item != null) {
+      amountController.text = item.amount.toString();
+      titleController.text = item.title;
+      if (categories.contains(item.category)) category = item.category;
+    }
+  }
 
   final categories = [
     'Food',
@@ -993,8 +1462,8 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
-                'Add Transaction',
+              Text(
+                widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -1030,7 +1499,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                 decoration: InputDecoration(
                   labelText: 'Amount',
                   hintText: '0',
-                  prefixText: '₹ ',
+                  prefixText: '${currencySymbols[appCurrencyCode.value] ?? '₹'} ',
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
@@ -1088,8 +1557,8 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
                   ),
                 ),
                 icon: const Icon(Icons.save_rounded),
-                label: const Text(
-                  'Save Transaction',
+                label: Text(
+                  widget.initialItem == null ? 'Save Transaction' : 'Update Transaction',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1103,7 +1572,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     );
   }
 
-  void save() {
+  Future<void> save() async {
     final amount = double.tryParse(
       amountController.text.trim(),
     );
@@ -1121,17 +1590,17 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         ? category
         : titleController.text.trim();
 
-    widget.onSave(
+    await widget.onSave(
       TransactionItem(
         title: title,
         category: category,
         amount: amount,
         isIncome: isIncome,
-        date: DateTime.now(),
+        date: widget.initialItem?.date ?? DateTime.now(),
       ),
     );
 
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   @override
