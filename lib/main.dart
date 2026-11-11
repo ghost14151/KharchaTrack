@@ -351,7 +351,7 @@ class _HomePageState extends State<HomePage> {
               foregroundColor: Colors.white,
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
+              label: Text(
                 widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
