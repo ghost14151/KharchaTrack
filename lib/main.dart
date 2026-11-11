@@ -124,6 +124,8 @@ class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
   final List<TransactionItem> transactions = [];
+  String historySearchQuery = '';
+  double monthlyBudget = 0;
 
   @override
   void initState() {
@@ -134,8 +136,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> loadTransactions() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('transactions');
+    monthlyBudget = prefs.getDouble('monthly_budget') ?? 0;
 
-    if (saved == null) return;
+    if (saved == null) {
+      if (mounted) setState(() {});
+      return;
+    }
 
     final List<dynamic> data = jsonDecode(saved);
 
@@ -168,6 +174,114 @@ class _HomePageState extends State<HomePage> {
       .fold(0, (sum, t) => sum + t.amount);
 
   double get balance => income - expense;
+
+  double get currentMonthExpense {
+    final now = DateTime.now();
+    return transactions
+        .where((t) => !t.isIncome && t.date.year == now.year && t.date.month == now.month)
+        .fold(0, (sum, t) => sum + t.amount);
+  }
+
+  Future<void> editTransaction(TransactionItem item) async {
+    final index = transactions.indexOf(item);
+    if (index < 0) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddTransactionSheet(
+        initialItem: item,
+        onSave: (updated) async {
+          setState(() => transactions[index] = updated);
+          await saveTransactions();
+        },
+      ),
+    );
+  }
+
+  Future<void> editMonthlyBudget() async {
+    final controller = TextEditingController(
+      text: monthlyBudget > 0 ? monthlyBudget.toStringAsFixed(0) : '',
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Monthly Budget'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Budget amount',
+            prefixText: '₹ ',
+            hintText: 'e.g. 10000',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text.trim());
+              if (amount != null && amount > 0) {
+                Navigator.pop(dialogContext, amount);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('monthly_budget', value);
+    if (!mounted) return;
+    setState(() => monthlyBudget = value);
+  }
+
+  Widget buildBudgetCard() {
+    final progress = (currentMonthExpense / monthlyBudget).clamp(0.0, 1.0);
+    final remaining = monthlyBudget - currentMonthExpense;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Monthly Budget', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                TextButton(onPressed: editMonthlyBudget, child: const Text('Edit')),
+              ],
+            ),
+            Text('₹${currentMonthExpense.toStringAsFixed(0)} spent of ₹${monthlyBudget.toStringAsFixed(0)}'),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                color: currentMonthExpense > monthlyBudget ? Colors.red : const Color(0xFF168A4A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              remaining >= 0
+                  ? '₹${remaining.toStringAsFixed(0)} remaining this month'
+                  : 'Budget exceeded by ₹${(-remaining).toStringAsFixed(0)}',
+              style: TextStyle(
+                color: remaining >= 0 ? Colors.green : Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void addTransaction() {
     showModalBottomSheet(
@@ -231,7 +345,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: addTransaction,
               icon: const Icon(Icons.add_rounded),
               label: const Text(
-                'Add Transaction',
+                widget.initialItem == null ? 'Add Transaction' : 'Edit Transaction',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             )
@@ -397,6 +511,10 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+        if (monthlyBudget > 0) ...[
+          const SizedBox(height: 16),
+          buildBudgetCard(),
+        ],
         const SizedBox(height: 28),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -592,6 +710,7 @@ class _HomePageState extends State<HomePage> {
             fontSize: 15,
           ),
         ),
+        onTap: () => editTransaction(item),
         onLongPress: () {
           showDialog(
             context: context,
@@ -631,31 +750,58 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildHistory() {
-    return transactions.isEmpty
-        ? const Center(
-            child: Text('No transactions yet.'),
+    final query = historySearchQuery.trim().toLowerCase();
+    final filtered = transactions.where((item) {
+      return query.isEmpty ||
+          item.title.toLowerCase().contains(query) ||
+          item.category.toLowerCase().contains(query);
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      children: [
+        Text(
+          '${filtered.length} Transactions',
+          style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          onChanged: (value) => setState(() => historySearchQuery = value),
+          decoration: InputDecoration(
+            hintText: 'Search title or category',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: historySearchQuery.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear_rounded),
+                    onPressed: () => setState(() => historySearchQuery = ''),
+                  ),
+            filled: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Tap to edit • Long press to delete',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
+            child: Center(
+              child: Text(
+                transactions.isEmpty ? 'No transactions yet.' : 'No matching transactions found.',
+              ),
+            ),
           )
-        : ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            children: [
-              Text(
-                '${transactions.length} Transactions',
-                style: const TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Long press a transaction to delete it.',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ...transactions.map(transactionTile),
-            ],
-          );
+        else
+          ...filtered.map(transactionTile),
+      ],
+    );
   }
 
   Widget buildAnalytics() {
@@ -878,6 +1024,18 @@ class _HomePageState extends State<HomePage> {
               ),
               const Divider(height: 1),
               ListTile(
+                leading: const Icon(Icons.savings_outlined),
+                title: const Text('Monthly Budget'),
+                subtitle: Text(
+                  monthlyBudget > 0
+                      ? '₹${monthlyBudget.toStringAsFixed(0)} per month'
+                      : 'Set a monthly spending limit',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: editMonthlyBudget,
+              ),
+              const Divider(height: 1),
+              ListTile(
                 leading: const Icon(Icons.dark_mode_outlined),
                 title: const Text('Dark Mode'),
                 subtitle: Text(
@@ -931,11 +1089,13 @@ class _HomePageState extends State<HomePage> {
 class AddTransactionSheet extends StatefulWidget {
   final Future<void> Function(TransactionItem) onSave;
   final bool initialIsIncome;
+  final TransactionItem? initialItem;
 
   const AddTransactionSheet({
     super.key,
     required this.onSave,
     this.initialIsIncome = false,
+    this.initialItem,
   });
 
   @override
@@ -946,7 +1106,19 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   final amountController = TextEditingController();
   final titleController = TextEditingController();
 
-  late bool isIncome = widget.initialIsIncome;
+  late bool isIncome;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.initialItem;
+    isIncome = item?.isIncome ?? widget.initialIsIncome;
+    if (item != null) {
+      amountController.text = item.amount.toString();
+      titleController.text = item.title;
+      if (categories.contains(item.category)) category = item.category;
+    }
+  }
 
   final categories = [
     'Food',
@@ -1103,7 +1275,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     );
   }
 
-  void save() {
+  Future<void> save() async {
     final amount = double.tryParse(
       amountController.text.trim(),
     );
@@ -1121,7 +1293,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         ? category
         : titleController.text.trim();
 
-    widget.onSave(
+    await widget.onSave(
       TransactionItem(
         title: title,
         category: category,
@@ -1131,7 +1303,7 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
       ),
     );
 
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   @override
