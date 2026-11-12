@@ -4,9 +4,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="false"
-        android:label="kharchatrack"
+        android:label="KharchaTrack"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@drawable/ic_launcher_brand">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -16,16 +16,30 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.kharchatrack"
+        applicationId = "com.kharchatrack.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KHARCHATRACK_KEYSTORE_PATH")
+                ?: throw GradleException("Missing KHARCHATRACK_KEYSTORE_PATH")
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("KHARCHATRACK_KEYSTORE_PASSWORD")
+                ?: throw GradleException("Missing KHARCHATRACK_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KHARCHATRACK_KEY_ALIAS")
+                ?: throw GradleException("Missing KHARCHATRACK_KEY_ALIAS")
+            keyPassword = System.getenv("KHARCHATRACK_KEY_PASSWORD")
+                ?: throw GradleException("Missing KHARCHATRACK_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

@@ -1,10 +1,11 @@
 name: Build KharchaTrack APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,11 +22,35 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Get dependencies
+      - name: Prepare release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KHARCHATRACK_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "Missing KHARCHATRACK_KEYSTORE_BASE64 secret"; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/kharchatrack-upload.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "KHARCHATRACK_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build release APK
+        env:
+          KHARCHATRACK_KEYSTORE_PASSWORD: ${{ secrets.KHARCHATRACK_KEYSTORE_PASSWORD }}
+          KHARCHATRACK_KEY_ALIAS: ${{ secrets.KHARCHATRACK_KEY_ALIAS }}
+          KHARCHATRACK_KEY_PASSWORD: ${{ secrets.KHARCHATRACK_KEY_PASSWORD }}
         run: flutter build apk --release
+
+      - name: Verify release APK signature
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER" || { echo "apksigner not found in Android SDK build-tools"; exit 1; }
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

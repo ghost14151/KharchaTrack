@@ -82,26 +82,40 @@ const FlutterSecureStorage secureStorage = FlutterSecureStorage();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final prefs = await SharedPreferences.getInstance();
-  final savedDarkMode = prefs.getBool('dark_mode') ?? false;
-  appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
-  dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
-  dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
-  dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
+  // Render the app before initializing optional platform plugins.
+  runApp(const KharchaTrackApp());
+  _initializeAppServices();
+}
 
-  appThemeMode.value =
-      savedDarkMode ? ThemeMode.dark : ThemeMode.light;
-  appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
-  appUnlocked.value = !appLockEnabled.value;
-  appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+Future<void> _initializeAppServices() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDarkMode = prefs.getBool('dark_mode') ?? false;
+    appCurrencyCode.value = prefs.getString('currency_code') ?? 'INR';
+    dailyReminderEnabled.value = prefs.getBool('daily_reminder_enabled') ?? false;
+    dailyReminderHour.value = prefs.getInt('daily_reminder_hour') ?? 20;
+    dailyReminderMinute.value = prefs.getInt('daily_reminder_minute') ?? 0;
+    appThemeMode.value = savedDarkMode ? ThemeMode.dark : ThemeMode.light;
+    appBiometricEnabled.value = prefs.getBool('biometric_enabled') ?? false;
+  } catch (error) {
+    debugPrint('Settings initialization failed; using defaults: $error');
+  }
+
+  try {
+    appLockEnabled.value = await secureStorage.read(key: 'app_pin') != null;
+    appUnlocked.value = !appLockEnabled.value;
+  } catch (error) {
+    appLockEnabled.value = false;
+    appUnlocked.value = true;
+    debugPrint('App lock initialization failed; continuing unlocked: $error');
+  }
+
   try {
     await initializeDailyReminderPlugin();
     if (dailyReminderEnabled.value) await scheduleDailyReminder();
-  } catch (_) {
-    // Keep the app usable if notification setup is unavailable.
+  } catch (error) {
+    debugPrint('Reminder initialization failed; continuing without reminders: $error');
   }
-
-  runApp(const KharchaTrackApp());
 }
 
 class TransactionItem {
@@ -513,7 +527,10 @@ class _HomePageState extends State<HomePage> {
               ),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NavigationBar(
         height: 72,
         elevation: 0,
         backgroundColor: Colors.white,
@@ -545,6 +562,8 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings_rounded),
             label: 'Settings',
+          ),
+        ],
           ),
         ],
       ),
@@ -1365,14 +1384,14 @@ class _HomePageState extends State<HomePage> {
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
-                title: Text('Privacy'),
-                subtitle: Text('Your transaction data stays on your device'),
+                title: Text('Privacy Policy'),
+                subtitle: Text('Your transactions and settings stay on this device; see the privacy policy.'),
               ),
               const Divider(height: 1),
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('About'),
-                subtitle: Text('KharchaTrack v1.3.0'),
+                subtitle: Text('KharchaTrack v1.5.0'),
               ),
             ],
           ),
@@ -1610,3 +1629,4 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     super.dispose();
   }
 }
+
